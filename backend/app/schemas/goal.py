@@ -12,6 +12,24 @@ from app.schemas.common import BaseSchema
 from app.schemas.goal_version import GoalVersionResponse
 
 
+def _validate_uom_targets(
+	uom_type: UoMType,
+	target_value: Optional[Decimal],
+	target_date: Optional[date],
+) -> None:
+	if uom_type == UoMType.TIMELINE:
+		if target_date is None or target_value is not None:
+			raise ValueError("TIMELINE goals require target_date and no target_value")
+	elif uom_type == UoMType.ZERO:
+		if target_date is not None:
+			raise ValueError("ZERO goals must not have a target_date")
+		if target_value is not None and target_value != Decimal("0"):
+			raise ValueError("ZERO goals must have target_value of 0")
+	else:
+		if target_value is None or target_date is not None:
+			raise ValueError("Non-TIMELINE goals require target_value and no target_date")
+
+
 class GoalCreate(BaseSchema):
 	title: str = Field(min_length=3, max_length=500)
 	description: Optional[str] = Field(default=None, max_length=1000)
@@ -23,14 +41,9 @@ class GoalCreate(BaseSchema):
 
 	@model_validator(mode="after")
 	def validate_targets(self) -> "GoalCreate":
-		if self.uom_type == UoMType.TIMELINE:
-			if self.target_date is None or self.target_value is not None:
-				raise ValueError("TIMELINE goals require target_date and no target_value")
-		else:
-			if self.target_value is None or self.target_date is not None:
-				raise ValueError("Non-TIMELINE goals require target_value and no target_date")
-		if self.uom_type == UoMType.ZERO and self.target_value not in (None, Decimal("0"), Decimal("0.0")):
-			raise ValueError("ZERO goals must have target_value of 0")
+		_validate_uom_targets(self.uom_type, self.target_value, self.target_date)
+		if self.uom_type == UoMType.ZERO and self.target_value is None:
+			self.target_value = Decimal("0")
 		return self
 
 
@@ -50,14 +63,9 @@ class GoalUpdate(BaseSchema):
 	def validate_targets(self) -> "GoalUpdate":
 		if self.uom_type is None:
 			return self
-		if self.uom_type == UoMType.TIMELINE:
-			if self.target_date is None or self.target_value is not None:
-				raise ValueError("TIMELINE goals require target_date and no target_value")
-		else:
-			if self.target_value is None or self.target_date is not None:
-				raise ValueError("Non-TIMELINE goals require target_value and no target_date")
-		if self.uom_type == UoMType.ZERO and self.target_value not in (None, Decimal("0"), Decimal("0.0")):
-			raise ValueError("ZERO goals must have target_value of 0")
+		_validate_uom_targets(self.uom_type, self.target_value, self.target_date)
+		if self.uom_type == UoMType.ZERO and self.target_value is None:
+			self.target_value = Decimal("0")
 		return self
 
 

@@ -15,6 +15,7 @@ logger = get_logger(__name__)
 
 class AuditHandler:
 	def register(self, event_bus: EventBus, db_factory: Callable[[], AsyncSession]) -> None:
+		self.db_factory = db_factory
 		event_bus.subscribe("goal_submitted", self.handle_goal_submitted)
 		event_bus.subscribe("goal_approved", self.handle_goal_approved)
 		event_bus.subscribe("goal_returned", self.handle_goal_returned)
@@ -97,3 +98,6 @@ class AuditHandler:
 			)
 		except Exception as exc:  # pragma: no cover
 			logger.error("audit_handler_failed", error=str(exc))
+
+
+audit_handler = AuditHandler()

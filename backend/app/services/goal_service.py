@@ -26,6 +26,7 @@ from app.models.user import User
 from app.repositories.goal_repository import GoalRepository
 from app.services.audit_service import audit_service
 from app.services.cycle_service import cycle_service
+from app.services.goal_state_machine import goal_state_machine
 from app.services.notification_service import notification_service
 from app.services.version_service import version_service
 
@@ -139,8 +140,7 @@ class GoalService:
 			raise WeightageError()
 
 		for goal in sheet.goals:
-			goal.status = GoalStatus.SUBMITTED
-			goal.version += 1
+			goal_state_machine.transition(goal, GoalStatus.SUBMITTED, user)
 			await version_service.snapshot_goal(goal, user, "Submitted", db)
 			db.add(
 				GoalEvent(

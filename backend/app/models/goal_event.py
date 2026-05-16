@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from sqlalchemy import Column, DateTime, Enum, ForeignKey, Index, JSON
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
@@ -18,7 +18,7 @@ class GoalEvent(Base):
 		server_default=text("gen_random_uuid()"),
 	)
 	goal_id = Column(PG_UUID(as_uuid=True), ForeignKey("goals.id"), nullable=False)
-	event_type = Column(Enum(GoalEventType, name="goal_event_type"), nullable=False)
+	event_type = Column(Enum(GoalEventType, name="goal_event_type", values_callable=lambda x: [e.value for e in x]), nullable=False)
 	actor_id = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
 	payload = Column(JSON, nullable=True)
 	occurred_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

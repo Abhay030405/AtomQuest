@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from uuid import UUID
 
@@ -14,7 +14,7 @@ class CycleConfig(BaseModel):
 	__tablename__ = "cycle_configs"
 
 	cycle_name = Column(String(100), nullable=False)
-	phase = Column(Enum(CyclePhase, name="cycle_phase"), nullable=False)
+	phase = Column(Enum(CyclePhase, name="cycle_phase", values_callable=lambda x: [e.value for e in x]), nullable=False)
 	window_open = Column(DateTime(timezone=True), nullable=False)
 	window_close = Column(DateTime(timezone=True), nullable=False)
 	is_active = Column(Boolean, default=False, nullable=False)

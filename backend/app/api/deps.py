@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator, Callable
 from uuid import UUID, uuid4
 
 from fastapi import Depends, Request
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import Permission, UserRole
@@ -16,7 +16,7 @@ from app.services.rbac_service import rbac_service
 from app.utils.pagination import PaginationParams
 
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+bearer_scheme = HTTPBearer()
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -28,10 +28,10 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def get_current_user(
-	token: str = Depends(oauth2_scheme),
+	credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
 	db: AsyncSession = Depends(get_db),
 ):
-	payload = decode_token(token)
+	payload = decode_token(credentials.credentials)
 	user_id = payload.get("sub")
 	if not user_id:
 		raise UnauthorizedError()
@@ -43,7 +43,7 @@ async def get_current_user(
 
 
 def require_permission(permission: Permission) -> Callable:
-	async def _dependency(
+	def _dependency(
 		current_user=Depends(get_current_user),
 	):
 		if not rbac_service.has_permission(current_user.role, permission):

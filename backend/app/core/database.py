@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 
@@ -7,10 +7,14 @@ from sqlalchemy.orm import declarative_base
 
 from app.core.config import settings
 
+_connect_args = {"ssl": True} if settings.db_ssl else {}
 
 engine = create_async_engine(
-	settings.database_url,
+	settings.async_database_url,
 	echo=settings.debug is True,
+	pool_pre_ping=True,
+	pool_recycle=1800,
+	connect_args=_connect_args,
 )
 
 AsyncSessionLocal = async_sessionmaker(

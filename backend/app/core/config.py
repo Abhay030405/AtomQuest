@@ -1,9 +1,13 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import List
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Params that asyncpg does not accept as connection kwargs
+_ASYNCPG_INCOMPATIBLE_PARAMS = {"sslmode", "channel_binding", "ssl", "options"}
 
 
 class Settings(BaseSettings):
@@ -19,10 +23,25 @@ class Settings(BaseSettings):
 	refresh_token_expire_days: int = 7
 
 	cors_origins: List[str] = []
+	db_ssl: bool = Field(default=True, validation_alias="DB_SSL")
 	debug: bool | None = None
 	log_level: str = "INFO"
 
 	model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+	@property
+	def async_database_url(self) -> str:
+		url = self.database_url
+		for prefix in ("postgresql://", "postgres://"):
+			if url.startswith(prefix):
+				url = "postgresql+asyncpg://" + url[len(prefix):]
+				break
+		parsed = urlparse(url)
+		params = {k: v[0] for k, v in parse_qs(parsed.query).items()}
+		for p in _ASYNCPG_INCOMPATIBLE_PARAMS:
+			params.pop(p, None)
+		clean_query = urlencode(params) if params else ""
+		return urlunparse(parsed._replace(query=clean_query))
 
 	@field_validator("cors_origins", mode="before")
 	@classmethod

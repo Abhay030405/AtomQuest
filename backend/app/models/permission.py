@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from sqlalchemy import Column, Enum, Integer, String, UniqueConstraint
 
@@ -11,5 +11,5 @@ class RolePermission(Base):
 	__table_args__ = (UniqueConstraint("role", "permission_key", name="uq_role_permission"),)
 
 	id = Column(Integer, primary_key=True, autoincrement=True)
-	role = Column(Enum(UserRole, name="user_role"), nullable=False)
+	role = Column(Enum(UserRole, name="user_role", values_callable=lambda x: [e.value for e in x]), nullable=False)
 	permission_key = Column(String(100), nullable=False)

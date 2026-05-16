@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import NotificationType
 from app.core.logging import get_logger
 from app.events.event_bus import EventBus
+from app.models.user import User
 from app.services.notification_service import notification_service
 
 
@@ -63,9 +65,19 @@ class NotificationHandler:
 				event_data["user_id"],
 				NotificationType.GOAL_UNLOCKED,
 				"Goal unlocked",
-				"Your goal has been unlocked for further review.",
+				f"Your goal has been unlocked: {event_data.get('reason', '')}",
 				db,
 			)
+			stmt = select(User.manager_id).where(User.id == event_data["user_id"])
+			manager_id = (await db.execute(stmt)).scalar_one_or_none()
+			if manager_id:
+				await notification_service.create_in_app(
+					manager_id,
+					NotificationType.GOAL_UNLOCKED,
+					"Team member goal unlocked",
+					f"A goal for your team member has been unlocked: {event_data.get('reason', '')}",
+					db,
+				)
 		except Exception as exc:  # pragma: no cover
 			logger.error("notification_handler_failed", error=str(exc))
 
@@ -81,3 +93,6 @@ class NotificationHandler:
 				)
 		except Exception as exc:  # pragma: no cover
 			logger.error("notification_handler_failed", error=str(exc))
+
+
+notification_handler = NotificationHandler()

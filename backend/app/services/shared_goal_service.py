@@ -5,14 +5,14 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.constants import GoalEventType, GoalStatus, NotificationType, Permission, UserRole
+from app.core.constants import GoalEventType, GoalSheetStatus, GoalStatus, NotificationType, Permission, UserRole
 from app.core.exceptions import ForbiddenError, GoalCountError, GoalLockedError
 from app.models.goal import Goal
 from app.models.goal_event import GoalEvent
+from app.models.goal_sheet import GoalSheet
 from app.models.shared_goal import SharedGoal
 from app.models.user import User
 from app.repositories.goal_repository import GoalRepository
-from app.repositories.shared_goal_repository import SharedGoalRepository
 from app.repositories.user_repository import UserRepository
 from app.services.audit_service import audit_service
 from app.services.goal_state_machine import goal_state_machine
@@ -28,7 +28,6 @@ class SharedGoalService:
 
 		goal_repo = GoalRepository(db)
 		user_repo = UserRepository(db)
-		shared_repo = SharedGoalRepository(db)
 
 		admin_sheet = await goal_repo.get_sheet_for_user(admin.id, cycle_id)
 		if admin_sheet is None:
@@ -150,22 +149,21 @@ class SharedGoalService:
 				db,
 				related_goal_id=goal.id,
 			)
-		await notification_service.create_in_app(
-			admin.id,
-			NotificationType.GOAL_UNLOCKED,
-			"Goal unlocked",
-			f"You unlocked goal {goal.title}",
-			db,
-			related_goal_id=goal.id,
-		)
+		goal_owner = await UserRepository(db).get_active_by_id(goal.user_id)
+		if goal_owner and goal_owner.manager_id:
+			await notification_service.create_in_app(
+				goal_owner.manager_id,
+				NotificationType.GOAL_UNLOCKED,
+				"Goal unlocked",
+				f"{goal_owner.full_name}'s goal was unlocked by {admin.full_name}: {reason}",
+				db,
+				related_goal_id=goal.id,
+			)
 		await db.commit()
 		await db.refresh(goal)
 		return goal
 
-	async def _create_sheet(self, user_id: UUID, cycle_id: UUID, db: AsyncSession):
-		from app.models.goal_sheet import GoalSheet
-		from app.core.constants import GoalSheetStatus
-
+	async def _create_sheet(self, user_id: UUID, cycle_id: UUID, db: AsyncSession) -> GoalSheet:
 		sheet = GoalSheet(user_id=user_id, cycle_id=cycle_id, status=GoalSheetStatus.DRAFT, returned_count=0)
 		db.add(sheet)
 		await db.flush()

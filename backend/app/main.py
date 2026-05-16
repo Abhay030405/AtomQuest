@@ -41,7 +41,8 @@ def create_app() -> FastAPI:
 	@app.on_event("startup")
 	async def on_startup() -> None:
 		configure_logging()
-		await init_db()
+		if settings.environment == "development":
+			await init_db()
 		setup_handlers()
 
 	@app.get("/health")

@@ -4,10 +4,13 @@ from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.goal import Goal
 from app.models.shared_goal import SharedGoal
 from app.repositories.base_repository import BaseRepository
+
+_SG_OPTS = (selectinload(SharedGoal.recipient), selectinload(SharedGoal.pusher))
 
 
 class SharedGoalRepository(BaseRepository[SharedGoal]):
@@ -15,13 +18,18 @@ class SharedGoalRepository(BaseRepository[SharedGoal]):
 		super().__init__(session, SharedGoal)
 
 	async def get_recipients(self, source_goal_id: UUID) -> list[SharedGoal]:
-		stmt = select(SharedGoal).where(SharedGoal.source_goal_id == source_goal_id)
+		stmt = (
+			select(SharedGoal)
+			.options(*_SG_OPTS)
+			.where(SharedGoal.source_goal_id == source_goal_id)
+		)
 		result = await self.session.execute(stmt)
 		return list(result.scalars().all())
 
 	async def get_by_recipient(self, recipient_user_id: UUID, cycle_id: UUID) -> list[SharedGoal]:
 		stmt = (
 			select(SharedGoal)
+			.options(*_SG_OPTS)
 			.join(Goal, SharedGoal.source_goal_id == Goal.id)
 			.where(SharedGoal.recipient_user_id == recipient_user_id)
 			.where(Goal.cycle_id == cycle_id)

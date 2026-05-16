@@ -6,7 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_admin, get_current_manager, get_db, get_pagination
+from app.api.deps import get_current_admin, get_current_manager, get_current_user, get_db, get_pagination
 from app.core.constants import RBAC_MATRIX, UserRole
 from app.core.exceptions import ForbiddenError
 from app.core.security import hash_password
@@ -102,11 +102,22 @@ async def create_user(
 	return APIResponse.ok(_build_user_response(user))
 
 
+@router.get("/me/team", response_model=APIResponse[list[UserListResponse]])
+async def get_my_team(
+	db: AsyncSession = Depends(get_db),
+	current_user=Depends(get_current_manager),
+) -> APIResponse[list[UserListResponse]]:
+	repo = UserRepository(db)
+	users = await repo.get_team(current_user.id)
+	items = [_build_user_list_response(user) for user in users]
+	return APIResponse.ok(items)
+
+
 @router.get("/{user_id}", response_model=APIResponse[UserResponse])
 async def get_user(
 	user_id: UUID,
 	db: AsyncSession = Depends(get_db),
-	current_user=Depends(get_current_manager),
+	current_user=Depends(get_current_user),
 ) -> APIResponse[UserResponse]:
 	repo = UserRepository(db)
 	user = await repo.get_or_raise(user_id)
@@ -133,14 +144,3 @@ async def update_user(
 	await db.commit()
 	await db.refresh(user)
 	return APIResponse.ok(_build_user_response(user))
-
-
-@router.get("/me/team", response_model=APIResponse[list[UserListResponse]])
-async def get_my_team(
-	db: AsyncSession = Depends(get_db),
-	current_user=Depends(get_current_manager),
-) -> APIResponse[list[UserListResponse]]:
-	repo = UserRepository(db)
-	users = await repo.get_team(current_user.id)
-	items = [_build_user_list_response(user) for user in users]
-	return APIResponse.ok(items)

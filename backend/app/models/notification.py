@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
@@ -12,7 +12,7 @@ class Notification(BaseModel):
 	__tablename__ = "notifications"
 
 	recipient_id = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-	notification_type = Column(Enum(NotificationType, name="notification_type"), nullable=False)
+	notification_type = Column(Enum(NotificationType, name="notification_type", values_callable=lambda x: [e.value for e in x]), nullable=False)
 	title = Column(String(255), nullable=False)
 	body = Column(Text, nullable=False)
 	is_read = Column(Boolean, default=False, nullable=False)

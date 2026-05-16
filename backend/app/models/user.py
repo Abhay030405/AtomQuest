@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import List, Optional
 from uuid import UUID
@@ -17,7 +17,7 @@ class User(BaseModel):
 	email = Column(String(255), unique=True, nullable=False, index=True)
 	hashed_password = Column(Text, nullable=False)
 	full_name = Column(String(255), nullable=False)
-	role = Column(Enum(UserRole, name="user_role"), nullable=False)
+	role = Column(Enum(UserRole, name="user_role", values_callable=lambda x: [e.value for e in x]), nullable=False)
 	manager_id = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 	department_id = Column(PG_UUID(as_uuid=True), ForeignKey("departments.id"), nullable=True)
 	employee_code = Column(String(50), unique=True, nullable=True)
@@ -25,8 +25,8 @@ class User(BaseModel):
 
 	manager = relationship("User", remote_side="User.id", back_populates="direct_reports")
 	direct_reports = relationship("User", back_populates="manager")
-	department = relationship("Department")
-	goal_sheets = relationship("GoalSheet", back_populates="owner")
+	department = relationship("Department", foreign_keys=[department_id])
+	goal_sheets = relationship("GoalSheet", foreign_keys="[GoalSheet.user_id]", back_populates="owner")
 
 
 Index("ix_users_email_is_deleted", User.email, User.is_deleted)
