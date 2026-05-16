@@ -32,44 +32,40 @@ def upgrade() -> None:
         sa.UniqueConstraint("role", "permission_key", name="uq_role_permission"),
     )
 
-    # Seed all 25 rows from RBAC_MATRIX (4 employee + 6 manager + 15 admin)
-    op.bulk_insert(
-        sa.table(
-            "role_permissions",
-            sa.column("role", sa.String),
-            sa.column("permission_key", sa.String),
-        ),
-        [
-            # EMPLOYEE — 4 permissions
-            {"role": "employee", "permission_key": "create_goal"},
-            {"role": "employee", "permission_key": "submit_goal_sheet"},
-            {"role": "employee", "permission_key": "edit_own_draft_goal"},
-            {"role": "employee", "permission_key": "view_own_goals"},
-            # MANAGER — 6 permissions
-            {"role": "manager", "permission_key": "view_own_goals"},
-            {"role": "manager", "permission_key": "view_team_goals"},
-            {"role": "manager", "permission_key": "approve_goal"},
-            {"role": "manager", "permission_key": "reject_goal"},
-            {"role": "manager", "permission_key": "edit_goal_in_review"},
-            {"role": "manager", "permission_key": "return_for_rework"},
-            # ADMIN — all 15 permissions
-            {"role": "admin", "permission_key": "create_goal"},
-            {"role": "admin", "permission_key": "submit_goal_sheet"},
-            {"role": "admin", "permission_key": "edit_own_draft_goal"},
-            {"role": "admin", "permission_key": "view_own_goals"},
-            {"role": "admin", "permission_key": "view_team_goals"},
-            {"role": "admin", "permission_key": "approve_goal"},
-            {"role": "admin", "permission_key": "reject_goal"},
-            {"role": "admin", "permission_key": "edit_goal_in_review"},
-            {"role": "admin", "permission_key": "return_for_rework"},
-            {"role": "admin", "permission_key": "push_shared_goal"},
-            {"role": "admin", "permission_key": "unlock_goal"},
-            {"role": "admin", "permission_key": "configure_cycle"},
-            {"role": "admin", "permission_key": "view_all_goals"},
-            {"role": "admin", "permission_key": "export_reports"},
-            {"role": "admin", "permission_key": "view_audit_log"},
-        ],
-    )
+    # Seed all 25 RBAC rows using raw SQL with explicit enum casts.
+    # op.bulk_insert with sa.String columns fails on asyncpg because PostgreSQL
+    # won't implicitly cast VARCHAR → user_role; explicit ::user_role cast required.
+    op.execute(sa.text("""
+        INSERT INTO role_permissions (role, permission_key) VALUES
+        -- EMPLOYEE (4)
+        ('employee'::user_role, 'create_goal'),
+        ('employee'::user_role, 'submit_goal_sheet'),
+        ('employee'::user_role, 'edit_own_draft_goal'),
+        ('employee'::user_role, 'view_own_goals'),
+        -- MANAGER (6)
+        ('manager'::user_role, 'view_own_goals'),
+        ('manager'::user_role, 'view_team_goals'),
+        ('manager'::user_role, 'approve_goal'),
+        ('manager'::user_role, 'reject_goal'),
+        ('manager'::user_role, 'edit_goal_in_review'),
+        ('manager'::user_role, 'return_for_rework'),
+        -- ADMIN (15)
+        ('admin'::user_role, 'create_goal'),
+        ('admin'::user_role, 'submit_goal_sheet'),
+        ('admin'::user_role, 'edit_own_draft_goal'),
+        ('admin'::user_role, 'view_own_goals'),
+        ('admin'::user_role, 'view_team_goals'),
+        ('admin'::user_role, 'approve_goal'),
+        ('admin'::user_role, 'reject_goal'),
+        ('admin'::user_role, 'edit_goal_in_review'),
+        ('admin'::user_role, 'return_for_rework'),
+        ('admin'::user_role, 'push_shared_goal'),
+        ('admin'::user_role, 'unlock_goal'),
+        ('admin'::user_role, 'configure_cycle'),
+        ('admin'::user_role, 'view_all_goals'),
+        ('admin'::user_role, 'export_reports'),
+        ('admin'::user_role, 'view_audit_log')
+    """))
 
 
 def downgrade() -> None:

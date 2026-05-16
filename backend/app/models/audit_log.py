@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from sqlalchemy import Column, DateTime, Enum, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
@@ -19,12 +19,12 @@ class AuditLog(Base):
 	)
 	table_name = Column(String(100), nullable=False)
 	record_id = Column(PG_UUID(as_uuid=True), nullable=False)
-	action = Column(Enum(AuditAction, name="audit_action"), nullable=False)
+	action = Column(Enum(AuditAction, name="audit_action", values_callable=lambda x: [e.value for e in x]), nullable=False)
 	field_name = Column(String(100), nullable=True)
 	old_value = Column(Text, nullable=True)
 	new_value = Column(Text, nullable=True)
 	actor_id = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-	actor_role = Column(Enum(UserRole, name="user_role"), nullable=False)
+	actor_role = Column(Enum(UserRole, name="user_role", values_callable=lambda x: [e.value for e in x]), nullable=False)
 	ip_address = Column(String(50), nullable=True)
 	request_id = Column(String(100), nullable=True)
 	changed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

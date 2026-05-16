@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from uuid import UUID
 
@@ -17,12 +17,12 @@ class Goal(BaseModel):
 	goal_sheet_id = Column(PG_UUID(as_uuid=True), ForeignKey("goal_sheets.id"), nullable=False)
 	title = Column(String(500), nullable=False)
 	description = Column(Text, nullable=True)
-	thrust_area = Column(Enum(ThrustArea, name="thrust_area"), nullable=False)
-	uom_type = Column(Enum(UoMType, name="uom_type"), nullable=False)
+	thrust_area = Column(Enum(ThrustArea, name="thrust_area", values_callable=lambda x: [e.value for e in x]), nullable=False)
+	uom_type = Column(Enum(UoMType, name="uom_type", values_callable=lambda x: [e.value for e in x]), nullable=False)
 	target_value = Column(Numeric(15, 4), nullable=True)
 	target_date = Column(Date, nullable=True)
 	weightage = Column(Numeric(5, 2), nullable=False)
-	status = Column(Enum(GoalStatus, name="goal_status"), default=GoalStatus.DRAFT, nullable=False)
+	status = Column(Enum(GoalStatus, name="goal_status", values_callable=lambda x: [e.value for e in x]), default=GoalStatus.DRAFT, nullable=False)
 	is_shared = Column(Boolean, default=False, nullable=False)
 	source_shared_goal_id = Column(PG_UUID(as_uuid=True), ForeignKey("goals.id"), nullable=True)
 	version = Column(Integer, default=1, nullable=False)

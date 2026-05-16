@@ -14,6 +14,9 @@ from app.models.goal_sheet import GoalSheet
 from app.models.user import User
 from app.repositories.base_repository import BaseRepository
 
+_GOAL_OPTS = (selectinload(Goal.owner), selectinload(Goal.locker), selectinload(Goal.goal_sheet))
+_SHEET_OPTS = (selectinload(GoalSheet.owner), selectinload(GoalSheet.goals))
+
 
 class GoalRepository(BaseRepository[Goal]):
 	def __init__(self, session: AsyncSession) -> None:
@@ -22,6 +25,7 @@ class GoalRepository(BaseRepository[Goal]):
 	async def get_by_user_and_cycle(self, user_id: UUID, cycle_id: UUID) -> list[Goal]:
 		stmt = (
 			select(Goal)
+			.options(*_GOAL_OPTS)
 			.where(Goal.user_id == user_id, Goal.cycle_id == cycle_id)
 			.where(Goal.is_deleted.is_(False))
 			.order_by(Goal.created_at.asc())
@@ -32,7 +36,7 @@ class GoalRepository(BaseRepository[Goal]):
 	async def get_sheet_for_user(self, user_id: UUID, cycle_id: UUID) -> GoalSheet | None:
 		stmt = (
 			select(GoalSheet)
-			.options(selectinload(GoalSheet.goals))
+			.options(*_SHEET_OPTS)
 			.where(GoalSheet.user_id == user_id, GoalSheet.cycle_id == cycle_id)
 			.where(GoalSheet.is_deleted.is_(False))
 		)
@@ -42,6 +46,7 @@ class GoalRepository(BaseRepository[Goal]):
 	async def get_pending_approvals(self, manager_id: UUID) -> list[GoalSheet]:
 		stmt = (
 			select(GoalSheet)
+			.options(*_SHEET_OPTS)
 			.join(User, GoalSheet.user_id == User.id)
 			.where(User.manager_id == manager_id)
 			.where(GoalSheet.status.in_([GoalSheetStatus.SUBMITTED, GoalSheetStatus.UNDER_REVIEW]))
@@ -71,20 +76,30 @@ class GoalRepository(BaseRepository[Goal]):
 		return Decimal(result.scalar_one())
 
 	async def get_locked_goals(self, employee_id: UUID | None = None) -> list[Goal]:
-		stmt = select(Goal).where(Goal.status == GoalStatus.LOCKED).where(Goal.is_deleted.is_(False))
+		stmt = (
+			select(Goal)
+			.options(*_GOAL_OPTS)
+			.where(Goal.status == GoalStatus.LOCKED)
+			.where(Goal.is_deleted.is_(False))
+		)
 		if employee_id:
 			stmt = stmt.where(Goal.user_id == employee_id)
 		result = await self.session.execute(stmt)
 		return list(result.scalars().all())
 
 	async def get_with_versions(self, goal_id: UUID) -> Goal | None:
-		stmt = select(Goal).options(selectinload(Goal.versions)).where(Goal.id == goal_id)
+		stmt = (
+			select(Goal)
+			.options(*_GOAL_OPTS, selectinload(Goal.versions))
+			.where(Goal.id == goal_id)
+		)
 		result = await self.session.execute(stmt)
 		return result.scalar_one_or_none()
 
 	async def get_team_goals(self, manager_id: UUID, cycle_id: UUID) -> list[Goal]:
 		stmt = (
 			select(Goal)
+			.options(*_GOAL_OPTS)
 			.join(User, Goal.user_id == User.id)
 			.where(User.manager_id == manager_id)
 			.where(Goal.cycle_id == cycle_id)

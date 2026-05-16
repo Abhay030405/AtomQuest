@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
@@ -14,7 +14,7 @@ class GoalSheet(BaseModel):
 
     user_id = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     cycle_id = Column(PG_UUID(as_uuid=True), ForeignKey("cycle_configs.id"), nullable=False)
-    status = Column(Enum(GoalSheetStatus, name="goal_sheet_status"), default=GoalSheetStatus.DRAFT, nullable=False)
+    status = Column(Enum(GoalSheetStatus, name="goal_sheet_status", values_callable=lambda x: [e.value for e in x]), default=GoalSheetStatus.DRAFT, nullable=False)
     submitted_at = Column(DateTime(timezone=True), nullable=True)
     approved_at = Column(DateTime(timezone=True), nullable=True)
     approved_by = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)

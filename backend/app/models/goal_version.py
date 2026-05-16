@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from uuid import uuid4
 
@@ -25,12 +25,12 @@ class GoalVersion(Base):
 	version_number = Column(Integer, nullable=False)
 	title = Column(String(500), nullable=False)
 	description = Column(Text, nullable=True)
-	thrust_area = Column(Enum(ThrustArea, name="thrust_area"), nullable=False)
-	uom_type = Column(Enum(UoMType, name="uom_type"), nullable=False)
+	thrust_area = Column(Enum(ThrustArea, name="thrust_area", values_callable=lambda x: [e.value for e in x]), nullable=False)
+	uom_type = Column(Enum(UoMType, name="uom_type", values_callable=lambda x: [e.value for e in x]), nullable=False)
 	target_value = Column(Numeric(15, 4), nullable=True)
 	target_date = Column(Date, nullable=True)
 	weightage = Column(Numeric(5, 2), nullable=False)
-	status = Column(Enum(GoalStatus, name="goal_status"), nullable=False)
+	status = Column(Enum(GoalStatus, name="goal_status", values_callable=lambda x: [e.value for e in x]), nullable=False)
 	changed_by = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
 	change_reason = Column(Text, nullable=True)
 	snapshot_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
