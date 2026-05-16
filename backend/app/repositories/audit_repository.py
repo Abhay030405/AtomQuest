@@ -5,6 +5,7 @@ from uuid import UUID
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.constants import AuditAction, GoalEventType, UserRole
 from app.models.audit_log import AuditLog
@@ -47,7 +48,7 @@ class AuditRepository(BaseRepository[AuditLog]):
 		return entry
 
 	async def get_filtered(self, filters: AuditFilter, skip: int = 0, limit: int = 50) -> tuple[list[AuditLog], int]:
-		stmt = select(AuditLog)
+		stmt = select(AuditLog).options(selectinload(AuditLog.actor))
 
 		if filters.post_lock_only:
 			stmt = stmt.join(

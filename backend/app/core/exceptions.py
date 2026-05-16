@@ -124,12 +124,12 @@ def _build_error_response(code: str, message: str, field: Optional[str]) -> dict
 	}
 
 
-async def atomquest_exception_handler(_: Request, exc: AtomQuestException) -> JSONResponse:
+def atomquest_exception_handler(_: Request, exc: AtomQuestException) -> JSONResponse:
 	payload = _build_error_response(exc.code, exc.message, exc.field)
 	return JSONResponse(status_code=exc.status_code, content=payload)
 
 
-async def validation_exception_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
+def validation_exception_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
 	field: Optional[str] = None
 	if exc.errors():
 		loc = exc.errors()[0].get("loc", [])

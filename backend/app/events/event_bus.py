@@ -20,7 +20,7 @@ class EventBus:
 		self.handlers[event_type].append(handler)
 
 	def publish(self, event_type: str, event_data: dict[str, Any]) -> None:
-		for handler in list(self.handlers.get(event_type, [])):
+		for handler in self.handlers.get(event_type, []):
 			try:
 				if inspect.iscoroutinefunction(handler):
 					raise RuntimeError("Async handler used with publish")
@@ -29,7 +29,7 @@ class EventBus:
 				logger.error("event_handler_failed", event_type=event_type, error=str(exc))
 
 	async def publish_async(self, event_type: str, event_data: dict[str, Any], db: AsyncSession) -> None:
-		for handler in list(self.handlers.get(event_type, [])):
+		for handler in self.handlers.get(event_type, []):
 			try:
 				result = handler(event_data, db)
 				if inspect.isawaitable(result):

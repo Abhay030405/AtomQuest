@@ -6,7 +6,6 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -19,7 +18,7 @@ from app.api.deps import (
 	get_pagination,
 	require_permission,
 )
-from app.core.constants import Permission, UserRole
+from app.core.constants import GoalSheetStatus, Permission, UserRole
 from app.core.exceptions import ForbiddenError, GoalNotFoundError
 from app.models.goal import Goal
 from app.models.goal_sheet import GoalSheet
@@ -31,10 +30,8 @@ from app.schemas.goal import (
 	GoalResponse,
 	GoalSheetResponse,
 	GoalUpdate,
-	ManagerGoalEdit,
 	SheetSubmitResponse,
 )
-from app.services.approval_service import approval_service
 from app.services.goal_service import goal_service
 from app.utils.pagination import build_pagination_meta
 
@@ -42,8 +39,8 @@ from app.utils.pagination import build_pagination_meta
 router = APIRouter()
 
 
-class ReturnReason(BaseSchema):
-	reason: str = Field(min_length=10, max_length=500)
+class SubmitSheetRequest(BaseSchema):
+	sheet_id: UUID
 
 
 def _build_goal_response(goal: Goal, sheet_status_override=None) -> GoalResponse:
@@ -94,6 +91,74 @@ def _build_sheet_response(sheet: GoalSheet) -> GoalSheetResponse:
 			"owner_name": sheet.owner.full_name if getattr(sheet, "owner", None) else None,
 		}
 	)
+
+
+# NOTE: static paths must come before dynamic /{goal_id} to avoid routing conflicts
+
+
+@router.get("/my-sheet", response_model=APIResponse[Optional[GoalSheetResponse]])
+async def get_my_sheet(
+	cycle_id: UUID = Query(...),
+	db: AsyncSession = Depends(get_db),
+	current_user=Depends(get_current_user),
+) -> APIResponse[Optional[GoalSheetResponse]]:
+	sheet = await goal_service.get_my_sheet(current_user, cycle_id, db)
+	if sheet is None:
+		return APIResponse.ok(None)
+	return APIResponse.ok(_build_sheet_response(sheet))
+
+
+@router.post("/submit-sheet", response_model=APIResponse[SheetSubmitResponse])
+async def submit_sheet(
+	payload: SubmitSheetRequest,
+	db: AsyncSession = Depends(get_db),
+	current_user=Depends(require_permission(Permission.SUBMIT_GOAL_SHEET)),
+) -> APIResponse[SheetSubmitResponse]:
+	sheet = await goal_service.submit_sheet(payload.sheet_id, current_user, db)
+	response = SheetSubmitResponse(
+		message="Goal sheet submitted successfully",
+		sheet=_build_sheet_response(sheet),
+		locked_at=sheet.submitted_at or datetime.now(timezone.utc),
+	)
+	return APIResponse.ok(response)
+
+
+@router.get("/team", response_model=APIResponse[PaginatedData[GoalSheetResponse]])
+async def get_team_sheets(
+	cycle_id: UUID = Query(...),
+	status: Optional[GoalSheetStatus] = Query(default=None),
+	pagination=Depends(get_pagination),
+	db: AsyncSession = Depends(get_db),
+	current_user=Depends(get_current_manager),
+) -> APIResponse[PaginatedData[GoalSheetResponse]]:
+	stmt = (
+		select(GoalSheet)
+		.options(
+			selectinload(GoalSheet.goals).selectinload(Goal.owner),
+			selectinload(GoalSheet.goals).selectinload(Goal.locker),
+			selectinload(GoalSheet.goals).selectinload(Goal.goal_sheet),
+			selectinload(GoalSheet.owner),
+			selectinload(GoalSheet.approver),
+			selectinload(GoalSheet.cycle),
+		)
+		.join(User, GoalSheet.user_id == User.id)
+		.where(GoalSheet.cycle_id == cycle_id)
+		.where(GoalSheet.is_deleted.is_(False))
+		.where(User.manager_id == current_user.id)
+	)
+	if status:
+		stmt = stmt.where(GoalSheet.status == status)
+
+	count_stmt = select(func.count()).select_from(stmt.subquery())
+	count_result = await db.execute(count_stmt)
+	total = int(count_result.scalar_one())
+
+	stmt = stmt.order_by(GoalSheet.submitted_at.desc().nullslast()).offset(pagination.skip).limit(pagination.limit)
+	result = await db.execute(stmt)
+	sheets = list(result.scalars().all())
+	items = [_build_sheet_response(sheet) for sheet in sheets]
+	meta = build_pagination_meta(total=total, page=pagination.page, page_size=pagination.page_size)
+	return APIResponse.ok(PaginatedData(items=items, meta=meta))
 
 
 @router.post("/", response_model=APIResponse[GoalResponse])
@@ -181,8 +246,6 @@ async def update_goal(
 	db: AsyncSession = Depends(get_db),
 	current_user=Depends(get_current_active_employee),
 ) -> APIResponse[GoalResponse]:
-	if payload.id != goal_id:
-		raise GoalNotFoundError()
 	goal = await goal_service.update_goal(goal_id, current_user, payload, db)
 	return APIResponse.ok(_build_goal_response(goal))
 
@@ -195,18 +258,6 @@ async def delete_goal(
 ) -> APIResponse[dict]:
 	await goal_service.delete_goal(goal_id, current_user, db)
 	return APIResponse.ok({"message": "Goal deleted"})
-
-
-@router.get("/sheets/me", response_model=APIResponse[Optional[GoalSheetResponse]])
-async def get_my_sheet(
-	cycle_id: UUID = Query(...),
-	db: AsyncSession = Depends(get_db),
-	current_user=Depends(get_current_user),
-) -> APIResponse[Optional[GoalSheetResponse]]:
-	sheet = await goal_service.get_my_sheet(current_user, cycle_id, db)
-	if sheet is None:
-		return APIResponse.ok(None)
-	return APIResponse.ok(_build_sheet_response(sheet))
 
 
 @router.get("/sheets/{sheet_id}/validate", response_model=APIResponse[dict])
@@ -222,60 +273,3 @@ async def validate_sheet(
 			"errors": [{"code": err.code, "message": err.message} for err in validation.errors],
 		}
 	)
-
-
-@router.post("/sheets/{sheet_id}/submit", response_model=APIResponse[SheetSubmitResponse])
-async def submit_sheet(
-	sheet_id: UUID,
-	db: AsyncSession = Depends(get_db),
-	current_user=Depends(require_permission(Permission.SUBMIT_GOAL_SHEET)),
-) -> APIResponse[SheetSubmitResponse]:
-	sheet = await goal_service.submit_sheet(sheet_id, current_user, db)
-	payload = SheetSubmitResponse(
-		message="Goal sheet submitted successfully",
-		sheet=_build_sheet_response(sheet),
-		locked_at=sheet.submitted_at or datetime.now(timezone.utc),
-	)
-	return APIResponse.ok(payload)
-
-
-@router.get("/approvals/pending", response_model=APIResponse[list[GoalSheetResponse]])
-async def list_pending_approvals(
-	db: AsyncSession = Depends(get_db),
-	current_user=Depends(get_current_manager),
-) -> APIResponse[list[GoalSheetResponse]]:
-	sheets = await approval_service.get_pending_approvals(current_user, db)
-	items = [_build_sheet_response(sheet) for sheet in sheets]
-	return APIResponse.ok(items)
-
-
-@router.post("/approvals/{sheet_id}/approve", response_model=APIResponse[GoalSheetResponse])
-async def approve_sheet(
-	sheet_id: UUID,
-	db: AsyncSession = Depends(get_db),
-	current_user=Depends(require_permission(Permission.APPROVE_GOAL)),
-) -> APIResponse[GoalSheetResponse]:
-	sheet = await approval_service.approve_sheet(sheet_id, current_user, db)
-	return APIResponse.ok(_build_sheet_response(sheet))
-
-
-@router.post("/approvals/{sheet_id}/return", response_model=APIResponse[GoalSheetResponse])
-async def return_sheet(
-	sheet_id: UUID,
-	payload: ReturnReason,
-	db: AsyncSession = Depends(get_db),
-	current_user=Depends(require_permission(Permission.RETURN_FOR_REWORK)),
-) -> APIResponse[GoalSheetResponse]:
-	sheet = await approval_service.return_for_rework(sheet_id, current_user, payload.reason, db)
-	return APIResponse.ok(_build_sheet_response(sheet))
-
-
-@router.patch("/approvals/goals/{goal_id}", response_model=APIResponse[GoalResponse])
-async def inline_edit_goal(
-	goal_id: UUID,
-	payload: ManagerGoalEdit,
-	db: AsyncSession = Depends(get_db),
-	current_user=Depends(require_permission(Permission.EDIT_GOAL_IN_REVIEW)),
-) -> APIResponse[GoalResponse]:
-	goal = await approval_service.inline_edit_goal(goal_id, current_user, payload, db)
-	return APIResponse.ok(_build_goal_response(goal))

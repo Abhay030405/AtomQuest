@@ -68,7 +68,7 @@ class UserRepository(BaseRepository[User]):
 			.where(User.is_active.is_(True))
 		)
 		cte = cte.union_all(children)
-		stmt = select(User).select_from(cte).where(User.id == cte.c.id)
+		stmt = select(User).where(User.id.in_(select(cte.c.id)))
 		result = await self.session.execute(stmt)
 		return list(result.scalars().all())
 

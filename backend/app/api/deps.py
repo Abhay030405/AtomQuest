@@ -43,7 +43,7 @@ async def get_current_user(
 
 
 def require_permission(permission: Permission) -> Callable:
-	async def _dependency(
+	def _dependency(
 		current_user=Depends(get_current_user),
 	):
 		if not rbac_service.has_permission(current_user.role, permission):

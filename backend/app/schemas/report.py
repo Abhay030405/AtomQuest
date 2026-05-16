@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Optional
 
 from app.schemas.common import BaseSchema
 
@@ -13,7 +14,7 @@ class GoalReportRow(BaseSchema):
 	goal_title: str
 	thrust_area: str
 	uom_type: str
-	target_value: Decimal
+	target_value: Optional[Decimal] = None
 	weightage: Decimal
 	sheet_status: str
 

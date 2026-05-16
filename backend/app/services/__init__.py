@@ -10,14 +10,14 @@ from app.services.shared_goal_service import shared_goal_service
 from app.services.version_service import version_service
 
 __all__ = [
-    "approval_service",
-    "audit_service",
-    "cycle_service",
-    "goal_service",
-    "goal_state_machine",
-    "notification_service",
-    "rbac_service",
-    "report_service",
-    "shared_goal_service",
-    "version_service",
+	"approval_service",
+	"audit_service",
+	"cycle_service",
+	"goal_service",
+	"goal_state_machine",
+	"notification_service",
+	"rbac_service",
+	"report_service",
+	"shared_goal_service",
+	"version_service",
 ]

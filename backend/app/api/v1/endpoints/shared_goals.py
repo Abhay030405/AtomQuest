@@ -103,6 +103,25 @@ async def list_received_shared_goals(
 	return APIResponse.ok(items)
 
 
+@router.get("/pushed", response_model=APIResponse[list[SharedGoalResponse]])
+async def list_pushed_shared_goals(
+	cycle_id: UUID = Query(...),
+	db: AsyncSession = Depends(get_db),
+	current_user=Depends(require_permission(Permission.PUSH_SHARED_GOAL)),
+) -> APIResponse[list[SharedGoalResponse]]:
+	stmt = (
+		select(SharedGoal)
+		.options(selectinload(SharedGoal.recipient), selectinload(SharedGoal.pusher))
+		.join(Goal, SharedGoal.source_goal_id == Goal.id)
+		.where(SharedGoal.pushed_by == current_user.id)
+		.where(Goal.cycle_id == cycle_id)
+	)
+	result = await db.execute(stmt)
+	shared_goals = list(result.scalars().all())
+	items = [_build_shared_goal_response(item) for item in shared_goals]
+	return APIResponse.ok(items)
+
+
 @router.get("/{source_goal_id}/recipients", response_model=APIResponse[list[SharedGoalResponse]])
 async def list_shared_goal_recipients(
 	source_goal_id: UUID,
