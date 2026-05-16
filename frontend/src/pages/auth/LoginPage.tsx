@@ -13,7 +13,6 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
-import { mockUsers } from "@/mocks/mockUsers";
 import { Permission } from "@/types/user.types";
 import { ROUTES } from "@/constants/routes";
 
@@ -38,10 +37,10 @@ function useTheme() {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function getDashboard(permissions: string[]): string {
-  if (permissions.includes(Permission.CONFIGURE_CYCLE)) return ROUTES.ADMIN.ROOT;
-  if (permissions.includes(Permission.APPROVE_GOAL)) return ROUTES.MANAGER.ROOT;
-  return ROUTES.EMPLOYEE.ROOT;
+function getDashboard(permissions: string[], userId: string): string {
+  if (permissions.includes(Permission.CONFIGURE_CYCLE)) return ROUTES.ADMIN.ROOT(userId);
+  if (permissions.includes(Permission.APPROVE_GOAL)) return ROUTES.MANAGER.ROOT(userId);
+  return ROUTES.EMPLOYEE.ROOT(userId);
 }
 
 // ─── Role config ───────────────────────────────────────────────────────────────
@@ -51,7 +50,6 @@ const ROLES = [
     key: "employee",
     title: "Employee",
     desc: "Access your goals and track progress",
-    email: "rahul.verma@atomberg.com",
     gradient: "linear-gradient(135deg,#4f8df9 0%,#2f6ee8 100%)",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
@@ -67,7 +65,6 @@ const ROLES = [
     key: "manager",
     title: "Manager",
     desc: "Review team goals and performance",
-    email: "vikram.nair@atomberg.com",
     gradient: "linear-gradient(135deg,#7b5cf7 0%,#5b3ce0 100%)",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
@@ -83,7 +80,6 @@ const ROLES = [
     key: "admin",
     title: "Admin",
     desc: "Manage users and system settings",
-    email: "priya.sharma@atomberg.com",
     gradient: "linear-gradient(135deg,#2dd4bf 0%,#14b8a6 100%)",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
@@ -282,7 +278,7 @@ function CredentialsView({ theme, role, onBack }: CredentialsViewProps) {
   const navigate = useNavigate();
   const { login, isLoading } = useAuthStore();
 
-  const [identifier, setIdentifier] = useState<string>(role.email);
+  const [identifier, setIdentifier] = useState<string>("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -291,18 +287,10 @@ function CredentialsView({ theme, role, onBack }: CredentialsViewProps) {
     e.preventDefault();
     setError(null);
     try {
-      // identifier may be email or phone — look up by email in mock
-      const emailToUse = identifier.includes("@")
-        ? identifier
-        : role.email; // fallback to role email if phone entered
-      await login(emailToUse, password || "password");
-      const user = mockUsers.find(
-        (u) => u.email.toLowerCase() === emailToUse.toLowerCase()
-      );
-      if (user) {
-        toast.success(`Signed in as ${user.fullName}`);
-        navigate(getDashboard(user.permissions));
-      }
+      const user = await login(identifier, password, role.key);
+      console.log("Auth permissions:", user.permissions);
+      toast.success(`Signed in as ${user.fullName}`);
+      navigate(getDashboard(user.permissions, user.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Invalid credentials. Please try again.");
     }
@@ -413,14 +401,6 @@ function CredentialsView({ theme, role, onBack }: CredentialsViewProps) {
           )}
         </button>
       </form>
-
-      {/* Demo hint */}
-      <p
-        className="mt-5 text-center text-xs"
-        style={{ color: T.muted(theme) }}
-      >
-        Demo mode — any password accepted
-      </p>
 
       {/* Footer */}
       <div

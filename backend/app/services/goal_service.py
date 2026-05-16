@@ -90,8 +90,13 @@ class GoalService:
 			related_goal_id=goal.id,
 		)
 		await db.commit()
-		await db.refresh(goal)
-		return goal
+		stmt = (
+			select(Goal)
+			.options(selectinload(Goal.owner), selectinload(Goal.locker), selectinload(Goal.goal_sheet))
+			.where(Goal.id == goal.id)
+		)
+		result = await db.execute(stmt)
+		return result.scalar_one()
 
 	async def validate_sheet(self, goal_sheet_id: UUID, db: AsyncSession) -> ValidationResult:
 		stmt = select(GoalSheet).options(selectinload(GoalSheet.goals)).where(GoalSheet.id == goal_sheet_id)
@@ -201,7 +206,15 @@ class GoalService:
 	async def get_my_sheet(self, user: User, cycle_id: UUID, db: AsyncSession) -> GoalSheet | None:
 		stmt = (
 			select(GoalSheet)
-			.options(selectinload(GoalSheet.goals).selectinload(Goal.versions))
+			.options(
+				selectinload(GoalSheet.goals).selectinload(Goal.versions),
+				selectinload(GoalSheet.goals).selectinload(Goal.owner),
+				selectinload(GoalSheet.goals).selectinload(Goal.locker),
+				selectinload(GoalSheet.goals).selectinload(Goal.goal_sheet),
+				selectinload(GoalSheet.owner),
+				selectinload(GoalSheet.approver),
+				selectinload(GoalSheet.cycle),
+			)
 			.where(GoalSheet.user_id == user.id, GoalSheet.cycle_id == cycle_id)
 			.where(GoalSheet.is_deleted.is_(False))
 		)

@@ -1,5 +1,5 @@
 import { Permission, UserRole } from "@/types/user.types";
-import { ROUTES } from "@/constants/routes";
+import { ROUTE_PATTERNS } from "@/constants/routes";
 
 export function canPerformAction(
   permissions: Permission[],
@@ -11,11 +11,19 @@ export function canPerformAction(
 export function getAccessibleRoutes(role: UserRole): string[] {
   switch (role) {
     case UserRole.EMPLOYEE:
-      return [ROUTES.EMPLOYEE.ROOT, ROUTES.EMPLOYEE.GOALS];
+      return [ROUTE_PATTERNS.EMPLOYEE.ROOT, ROUTE_PATTERNS.EMPLOYEE.GOALS];
     case UserRole.MANAGER:
-      return [ROUTES.MANAGER.ROOT, ROUTES.MANAGER.TEAM_GOALS, ROUTES.MANAGER.REVIEW];
+      return [
+        ROUTE_PATTERNS.MANAGER.ROOT,
+        ROUTE_PATTERNS.MANAGER.TEAM_GOALS,
+        ROUTE_PATTERNS.MANAGER.REVIEW,
+      ];
     case UserRole.ADMIN:
-      return [ROUTES.ADMIN.ROOT, ROUTES.ADMIN.USERS, ROUTES.ADMIN.CYCLES];
+      return [
+        ROUTE_PATTERNS.ADMIN.ROOT,
+        ROUTE_PATTERNS.ADMIN.USERS,
+        ROUTE_PATTERNS.ADMIN.CYCLES,
+      ];
     default:
       return [];
   }

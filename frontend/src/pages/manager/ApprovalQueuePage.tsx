@@ -1,268 +1,235 @@
-import { useState, useMemo } from "react";
-import { Link } from "react-router-dom";
-import { differenceInDays, parseISO } from "date-fns";
-import { Search, X, ChevronRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { GoalStatusBadge } from "@/components/goals/GoalStatusBadge";
-import { EmptyState } from "@/components/shared/EmptyState";
-import { usePendingApprovals } from "@/hooks/useGoals";
-import { useDirectReports, useTeamSheets } from "@/hooks/useApprovals";
-import { USERS_BY_ID } from "@/mocks/mockUsers";
-import { GoalStatus } from "@/types/goal.types";
-import type { GoalSheet } from "@/types/goal.types";
-import { ROUTES } from "@/constants/routes";
+import { useState } from "react";
+import { useAuthStore } from "@/store/authStore";
+import { useTeamSheets, useApproveSheet, useReturnForRework } from "@/hooks/useApprovals";
+import { useCycleStore } from "@/store/cycleStore";
 import { cn } from "@/lib/utils";
-
-const CYCLE_ID = "cycle-fy2026";
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function getDaysColor(days: number): string {
-  if (days > 7) return "text-red-600 font-semibold";
-  if (days >= 3) return "text-amber-600 font-semibold";
-  return "text-emerald-600";
-}
-
-function getDaysBadge(days: number): string {
-  if (days > 7) return "bg-red-100 text-red-700 border border-red-200";
-  if (days >= 3) return "bg-amber-100 text-amber-700 border border-amber-200";
-  return "bg-emerald-100 text-emerald-700 border border-emerald-200";
-}
-
-// ─── Enriched sheet ───────────────────────────────────────────────────────────
-
-interface EnrichedSheet extends GoalSheet {
-  userName: string;
-  departmentName: string;
-  employeeCode: string;
-  daysWaiting: number;
-}
-
-function enrichSheet(sheet: GoalSheet): EnrichedSheet {
-  const user = USERS_BY_ID[sheet.userId];
-  const days = sheet.submittedAt
-    ? differenceInDays(new Date(), parseISO(sheet.submittedAt))
-    : 0;
-  return {
-    ...sheet,
-    userName: user?.fullName ?? "Unknown",
-    departmentName: user?.departmentName ?? "—",
-    employeeCode: user?.employeeCode ?? "—",
-    daysWaiting: days,
-  };
-}
-
-// ─── ApprovalQueuePage ────────────────────────────────────────────────────────
+import { toast } from "sonner";
 
 export default function ApprovalQueuePage() {
-  const { data: pendingSheets = [], isLoading: pendingLoading } = usePendingApprovals();
-  const { data: directReports = [], isLoading: reportsLoading } = useDirectReports();
-  const { data: teamSheetsResponse, isLoading: sheetsLoading } = useTeamSheets(CYCLE_ID);
+  const { currentUser } = useAuthStore();
+  const { activeConfig } = useCycleStore();
+  const { data: teamSheets = [], isLoading } = useTeamSheets(activeConfig?.id ?? "");
+  const approveSheet = useApproveSheet();
+  const returnForRework = useReturnForRework();
 
-  const [nameSearch, setNameSearch] = useState("");
-  const [deptFilter, setDeptFilter] = useState("");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const pendingSheets = teamSheets.filter((s: any) => s.status === "submitted" || s.status === "under_review");
 
-  const isLoading = pendingLoading || reportsLoading || sheetsLoading;
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [reworkComment, setReworkComment] = useState("");
 
-  const reportIds = directReports.map((u) => u.id);
-  const teamSheets = teamSheetsResponse?.items.filter((s) => reportIds.includes(s.userId)) ?? [];
-  const approvedCount = teamSheets.filter((s) => s.status === GoalStatus.APPROVED).length;
-  const returnedCount = teamSheets.filter((s) => s.status === GoalStatus.DRAFT && s.submittedAt).length;
+  const selected = pendingSheets.find((s: any) => s.id === selectedId) ?? pendingSheets[0] ?? null;
 
-  const myPendingSheets = pendingSheets.filter((s) => reportIds.includes(s.userId));
-  const enriched = myPendingSheets.map(enrichSheet);
+  const initials = (name: string) =>
+    (name ?? "??").split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase();
 
-  // Unique departments for filter dropdown
-  const departments = Array.from(new Set(enriched.map((s) => s.departmentName)));
+  const totalWeight = selected?.goals?.reduce((sum: number, g: any) => sum + (g.weightage ?? 0), 0) ?? 0;
 
-  const filtered = useMemo(() => {
-    return enriched.filter((sheet) => {
-      if (nameSearch && !sheet.userName.toLowerCase().includes(nameSearch.toLowerCase())) {
-        return false;
-      }
-      if (deptFilter && sheet.departmentName !== deptFilter) return false;
-      if (fromDate && sheet.submittedAt && sheet.submittedAt < fromDate) return false;
-      if (toDate && sheet.submittedAt) {
-        const toEnd = toDate + "T23:59:59.999Z";
-        if (sheet.submittedAt > toEnd) return false;
-      }
-      return true;
-    });
-  }, [enriched, nameSearch, deptFilter, fromDate, toDate]);
+  async function handleApprove() {
+    if (!selected) return;
+    try {
+      await approveSheet.mutateAsync({ sheetId: selected.id });
+      toast.success("Goal sheet approved");
+      setSelectedId(null);
+    } catch {
+      toast.error("Failed to approve");
+    }
+  }
 
-  const hasFilter = Boolean(nameSearch || deptFilter || fromDate || toDate);
-
-  function clearFilters() {
-    setNameSearch("");
-    setDeptFilter("");
-    setFromDate("");
-    setToDate("");
+  async function handleRework() {
+    if (!selected || !reworkComment.trim()) return;
+    try {
+      await returnForRework.mutateAsync({ sheetId: selected.id, comment: reworkComment });
+      toast.success("Returned for rework");
+      setReworkComment("");
+      setSelectedId(null);
+    } catch {
+      toast.error("Failed to return for rework");
+    }
   }
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">Approval Queue</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Review and approve your team&apos;s goal sheets for FY 2026
-        </p>
-      </div>
-
-      {/* Summary stat bar */}
-      {!isLoading && (
-        <div className="flex flex-wrap items-center gap-3 p-3 rounded-lg bg-muted/40 border text-xs">
-          <span className="font-semibold text-foreground">
-            {myPendingSheets.length} sheet{myPendingSheets.length !== 1 ? "s" : ""} pending
-          </span>
-          <span className="text-muted-foreground">·</span>
-          <span className="text-emerald-600 font-medium">{approvedCount} approved</span>
-          {returnedCount > 0 && (
-            <>
-              <span className="text-muted-foreground">·</span>
-              <span className="text-amber-600 font-medium">{returnedCount} returned for rework</span>
-            </>
-          )}
-          <div className="ml-auto">
-            <Link
-              to={ROUTES.MANAGER.TEAM_GOALS}
-              className="flex items-center gap-0.5 text-indigo-600 hover:underline"
-            >
-              View all team goals <ChevronRight className="h-3 w-3" />
-            </Link>
+    <div className="p-lg flex flex-col lg:flex-row gap-lg bg-surface h-[calc(100vh-64px)] overflow-hidden">
+      {/* LEFT PANEL: Submissions list */}
+      <section className="w-full lg:w-1/3 max-w-sm flex flex-col bg-surface border border-outline-variant rounded-lg shadow-level-1 overflow-hidden">
+        {/* List header */}
+        <div className="px-md py-lg border-b border-outline-variant bg-surface-container-lowest flex justify-between items-center">
+          <div>
+            <h2 className="text-title-lg text-on-surface">Submissions</h2>
+            <p className="text-body-md text-on-surface-variant">Pending your review</p>
           </div>
-        </div>
-      )}
-
-      {/* Filter bar */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input
-            placeholder="Search employee…"
-            value={nameSearch}
-            onChange={(e) => setNameSearch(e.target.value)}
-            className="h-8 pl-8 text-xs w-44"
-          />
+          <span className="bg-primary-container text-on-primary-container text-label-md px-2 py-1 rounded-full">
+            {pendingSheets.length}
+          </span>
         </div>
 
-        {departments.length > 1 && (
-          <select
-            value={deptFilter}
-            onChange={(e) => setDeptFilter(e.target.value)}
-            className="h-8 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="">All departments</option>
-            {departments.map((d) => (
-              <option key={d} value={d}>{d}</option>
-            ))}
-          </select>
-        )}
-
-        <Input
-          type="date"
-          title="Submitted from"
-          value={fromDate}
-          onChange={(e) => setFromDate(e.target.value)}
-          className="h-8 text-xs w-36"
-        />
-        <Input
-          type="date"
-          title="Submitted to"
-          value={toDate}
-          onChange={(e) => setToDate(e.target.value)}
-          className="h-8 text-xs w-36"
-        />
-
-        {hasFilter && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 text-xs text-muted-foreground gap-1"
-            onClick={clearFilters}
-          >
-            <X className="h-3 w-3" />
-            Clear
-          </Button>
-        )}
-      </div>
-
-      {/* Table */}
-      {isLoading ? (
-        <div className="space-y-2">
-          {["a", "b", "c"].map((k) => <Skeleton key={k} className="h-14 w-full rounded-lg" />)}
-        </div>
-      ) : filtered.length === 0 ? (
-        <EmptyState variant="no-approvals" className="py-12" />
-      ) : (
-        <div className="rounded-lg border overflow-hidden">
-          <table className="w-full text-xs">
-            <thead className="bg-muted/40 border-b">
-              <tr>
-                <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Employee</th>
-                <th className="text-left px-3 py-3 font-semibold text-muted-foreground hidden sm:table-cell">Department</th>
-                <th className="text-right px-3 py-3 font-semibold text-muted-foreground">Goals</th>
-                <th className="text-right px-3 py-3 font-semibold text-muted-foreground hidden md:table-cell">Submitted</th>
-                <th className="text-right px-3 py-3 font-semibold text-muted-foreground">Days Waiting</th>
-                <th className="text-center px-3 py-3 font-semibold text-muted-foreground">Status</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((sheet) => (
-                <tr
+        {/* List items */}
+        <div className="flex-1 overflow-y-auto">
+          {isLoading ? (
+            <div className="p-lg space-y-md">
+              {[1, 2, 3].map((i) => <div key={i} className="h-16 bg-surface-container-low rounded-lg animate-pulse" />)}
+            </div>
+          ) : pendingSheets.length === 0 ? (
+            <div className="p-xl text-center">
+              <span className="material-symbols-outlined text-[48px] text-on-surface-variant/40">inbox</span>
+              <p className="text-body-md text-on-surface-variant mt-md">No pending submissions</p>
+            </div>
+          ) : (
+            pendingSheets.map((sheet: any) => {
+              const isSelected = (selected?.id ?? pendingSheets[0]?.id) === sheet.id;
+              return (
+                <button
                   key={sheet.id}
-                  className="border-b border-muted/30 hover:bg-muted/20 transition-colors"
+                  onClick={() => setSelectedId(sheet.id)}
+                  className={cn(
+                    "w-full px-md py-md border-b border-outline-variant border-l-4 cursor-pointer transition-colors text-left",
+                    isSelected
+                      ? "border-l-primary bg-primary-fixed/20"
+                      : "border-l-transparent hover:bg-surface-container-low"
+                  )}
                 >
-                  <td className="px-4 py-3">
-                    <p className="font-semibold text-foreground">{sheet.userName}</p>
-                    <p className="text-muted-foreground text-[10px]">{sheet.employeeCode}</p>
-                  </td>
-                  <td className="px-3 py-3 text-muted-foreground hidden sm:table-cell">
-                    {sheet.departmentName}
-                  </td>
-                  <td className="px-3 py-3 text-right tabular-nums font-medium">
-                    {sheet.goals.length}
-                  </td>
-                  <td className="px-3 py-3 text-right text-muted-foreground hidden md:table-cell">
-                    {sheet.submittedAt
-                      ? new Date(sheet.submittedAt).toLocaleDateString("en-IN", {
-                          day: "2-digit",
-                          month: "short",
-                          year: "numeric",
-                        })
-                      : "—"}
-                  </td>
-                  <td className="px-3 py-3 text-right">
-                    <Badge
-                      className={cn(
-                        "text-[10px] font-semibold tabular-nums",
-                        getDaysBadge(sheet.daysWaiting)
-                      )}
-                    >
-                      {sheet.daysWaiting}d
-                    </Badge>
-                  </td>
-                  <td className="px-3 py-3 text-center">
-                    <GoalStatusBadge status={sheet.status} size="sm" />
-                  </td>
-                  <td className="px-4 py-3">
-                    <Link to={ROUTES.MANAGER.REVIEW_SHEET(sheet.id)}>
-                      <Button size="sm" className="h-7 text-xs whitespace-nowrap">
-                        Review
-                      </Button>
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  <div className="flex items-center gap-md">
+                    <div className="w-10 h-10 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-title-md shrink-0">
+                      {initials(sheet.employeeName ?? "")}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-title-md text-on-surface truncate">{sheet.employeeName ?? "Unknown"}</h3>
+                      <p className="text-body-md text-on-surface-variant truncate">{sheet.employeeRole ?? "—"}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="text-label-md text-on-surface-variant block">Submitted</span>
+                      <span className="text-body-md text-on-surface block">
+                        {sheet.submittedAt ? new Date(sheet.submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              );
+            })
+          )}
         </div>
+      </section>
+
+      {/* RIGHT PANEL: Detail view */}
+      {selected ? (
+        <section className="flex-1 flex flex-col bg-surface border border-outline-variant rounded-lg shadow-level-1 overflow-hidden relative">
+          {/* Detail header */}
+          <div className="px-lg py-lg border-b border-outline-variant bg-surface-container-lowest shrink-0">
+            <div className="flex justify-between items-start mb-md">
+              <div className="flex items-center gap-md">
+                <div className="w-14 h-14 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-headline-md font-bold shrink-0 border border-outline-variant">
+                  {initials(selected.employeeName ?? "")}
+                </div>
+                <div>
+                  <h2 className="text-headline-md text-on-surface">{selected.employeeName}'s Goals</h2>
+                  <p className="text-body-md text-on-surface-variant">{selected.employeeRole ?? "—"}</p>
+                </div>
+              </div>
+              {/* Weightage indicator */}
+              <div className="bg-surface-container border border-outline-variant rounded-lg p-sm flex items-center gap-md min-w-[200px]">
+                <div className="flex-1">
+                  <div className="flex justify-between mb-xs">
+                    <span className="text-label-md text-on-surface-variant uppercase tracking-wider">Total Weightage</span>
+                    <span className={cn("text-title-md font-bold", totalWeight === 100 ? "text-primary" : "text-error")}>
+                      {totalWeight}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-surface-variant rounded-full h-1.5">
+                    <div
+                      className={cn("h-1.5 rounded-full", totalWeight === 100 ? "bg-primary" : "bg-error")}
+                      style={{ width: `${Math.min(totalWeight, 100)}%` }}
+                    />
+                  </div>
+                </div>
+                <span className={cn("material-symbols-outlined", totalWeight === 100 ? "text-tertiary-container" : "text-error")}>
+                  {totalWeight === 100 ? "check_circle" : "warning"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Goals list */}
+          <div className="flex-1 overflow-y-auto p-lg bg-surface">
+            <div className="flex flex-col gap-md max-w-4xl mx-auto">
+              {(selected.goals ?? []).length === 0 ? (
+                <div className="text-center py-xl text-on-surface-variant">No goals found in this sheet</div>
+              ) : (
+                (selected.goals ?? []).map((goal: any) => (
+                  <article key={goal.id} className="bg-surface border border-outline-variant rounded-lg p-lg shadow-level-1 hover:shadow-level-2 transition-shadow">
+                    <div className="flex justify-between items-start mb-sm">
+                      <span className="bg-surface-container text-on-surface-variant text-label-md px-2 py-1 rounded border border-outline-variant/50">
+                        {goal.uom ?? "General"}
+                      </span>
+                      <span className={cn(
+                        "text-label-md px-2 py-1 rounded flex items-center gap-xs",
+                        goal.isAligned
+                          ? "bg-tertiary-container/10 text-tertiary"
+                          : "bg-error-container text-on-error-container"
+                      )}>
+                        <span className="material-symbols-outlined text-[14px]">
+                          {goal.isAligned ? "verified" : "warning"}
+                        </span>
+                        {goal.isAligned ? "Department Aligned" : "Out of Alignment"}
+                      </span>
+                    </div>
+                    <h3 className="text-title-lg text-on-surface mb-md">{goal.title}</h3>
+                    {!goal.isAligned && goal.alignmentNote && (
+                      <p className="text-body-md text-error mb-md">{goal.alignmentNote}</p>
+                    )}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-md pt-md border-t border-outline-variant">
+                      <div>
+                        <label className="text-label-md text-on-surface-variant block mb-xs">Target Measure</label>
+                        <p className="text-body-md text-on-surface">{goal.targetValue ?? "—"}</p>
+                      </div>
+                      <div className="border-l border-outline-variant/50 pl-md hidden md:block">
+                        <label className="text-label-md text-on-surface-variant block mb-xs">Weightage</label>
+                        <p className="text-title-md text-on-surface">{goal.weightage ?? 0}%</p>
+                      </div>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+            <div className="h-32" />
+          </div>
+
+          {/* Action bar */}
+          <div className="absolute bottom-0 left-0 right-0 bg-surface border-t border-outline-variant p-lg shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+            <div className="max-w-4xl mx-auto flex flex-col gap-sm">
+              <textarea
+                rows={2}
+                value={reworkComment}
+                onChange={(e) => setReworkComment(e.target.value)}
+                placeholder="Add notes for rework (required to return)..."
+                className="w-full bg-surface-container-lowest border border-outline-variant rounded-md text-body-md text-on-surface p-sm focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all resize-none"
+              />
+              <div className="flex justify-end gap-md">
+                <button
+                  onClick={handleRework}
+                  disabled={!reworkComment.trim() || returnForRework.isPending}
+                  className="px-xl py-2 rounded text-title-md border border-outline-variant text-on-surface bg-surface hover:bg-surface-container-low transition-colors flex items-center gap-sm active:scale-95 disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-[20px]">undo</span>
+                  Return for Rework
+                </button>
+                <button
+                  onClick={handleApprove}
+                  disabled={approveSheet.isPending}
+                  className="px-xl py-2 rounded text-title-md text-on-primary bg-primary hover:bg-primary-container transition-colors shadow-level-1 flex items-center gap-sm active:scale-95 border-t border-white/20 disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-[20px]">check</span>
+                  Approve Goals
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : (
+        <section className="flex-1 flex items-center justify-center bg-surface border border-outline-variant rounded-lg">
+          <div className="text-center">
+            <span className="material-symbols-outlined text-[64px] text-on-surface-variant/30">task_alt</span>
+            <p className="text-body-lg text-on-surface-variant mt-md">Select a submission to review</p>
+          </div>
+        </section>
       )}
     </div>
   );

@@ -13,7 +13,7 @@ export function useMyGoals(cycleId?: string) {
   return useQuery({
     queryKey: ["my-goals", userId, cycleId],
     queryFn: () => goalService.getMyGoals(userId, cycleId),
-    enabled: Boolean(userId),
+    enabled: Boolean(userId && cycleId),
   });
 }
 

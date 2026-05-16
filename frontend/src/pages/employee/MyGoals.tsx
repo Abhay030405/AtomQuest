@@ -1,413 +1,274 @@
 import { useState } from "react";
-import { AlertCircle, Plus, Send, InfoIcon } from "lucide-react";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { GoalCard } from "@/components/goals/GoalCard";
-import { GoalForm } from "@/components/goals/GoalForm";
-import type { GoalFormData } from "@/components/goals/GoalForm";
-import { WeightageBar } from "@/components/goals/WeightageBar";
-import { GoalStatusBadge } from "@/components/goals/GoalStatusBadge";
-import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
-import { EmptyState } from "@/components/shared/EmptyState";
-import {
-  useMyGoals,
-  useMySheet,
-  useCreateGoal,
-  useUpdateGoal,
-  useDeleteGoal,
-  useSubmitSheet,
-} from "@/hooks/useGoals";
-import { useWeightage } from "@/hooks/useWeightage";
-import { useWindowStatus } from "@/hooks/useWindowStatus";
-import { useAuth } from "@/hooks/useAuth";
-import { GoalStatus, UoMType } from "@/types/goal.types";
+import { useNavigate } from "react-router-dom";
+import { useAuthStore } from "@/store/authStore";
+import { useCycleStore } from "@/store/cycleStore";
+import { useMyGoals, useSubmitSheet } from "@/hooks/useGoals";
+import { ROUTES } from "@/constants/routes";
 import type { Goal } from "@/types/goal.types";
-import { formatThrustArea } from "@/utils/format.util";
-import { cn } from "@/lib/utils";
 
-const CYCLE_ID = "cycle-fy2026";
+type ColumnId = "draft" | "submitted" | "approved" | "rejected";
 
-// ─── Submit Sheet Dialog ──────────────────────────────────────────────────────
-
-interface SubmitDialogProps {
-  readonly open: boolean;
-  readonly onOpenChange: (open: boolean) => void;
-  readonly goals: Goal[];
-  readonly totalWeightage: number;
-  readonly onConfirm: () => void;
-  readonly isLoading: boolean;
+interface ColumnDef {
+  id: ColumnId;
+  title: string;
+  dot: string;   // colored dot in header
+  emptyMsg: string;
 }
 
-function SubmitSheetDialog({
-  open,
-  onOpenChange,
-  goals,
-  totalWeightage,
-  onConfirm,
-  isLoading,
-}: SubmitDialogProps) {
+const COLUMNS: ColumnDef[] = [
+  { id: "draft",     title: "Draft Goals",     dot: "bg-on-surface-variant", emptyMsg: "No drafts" },
+  { id: "submitted", title: "Submitted Goals", dot: "bg-blue-500",            emptyMsg: "Drop drafts here to submit" },
+  { id: "approved",  title: "Approved Goals",  dot: "bg-emerald-500",         emptyMsg: "Nothing approved yet" },
+  { id: "rejected",  title: "Rejected Goals",  dot: "bg-rose-500",            emptyMsg: "No rejections" },
+];
+
+const THRUST_LABEL: Record<string, string> = {
+  REVENUE_GROWTH: "Revenue Growth",
+  CUSTOMER_SATISFACTION: "Customer Satisfaction",
+  OPERATIONAL_EXCELLENCE: "Operational Excellence",
+  PEOPLE_DEVELOPMENT: "People Development",
+  SAFETY_COMPLIANCE: "Safety & Compliance",
+  INNOVATION: "Innovation",
+  COST_OPTIMISATION: "Cost Optimisation",
+  QUALITY: "Quality",
+};
+
+const UOM_LABEL: Record<string, string> = {
+  MIN: "Higher is better",
+  MAX: "Lower is better",
+  TIMELINE: "Deadline",
+  ZERO: "Zero target",
+};
+
+function classifyGoal(g: Goal): ColumnId | null {
+  switch (g.status) {
+    case "draft":
+      return (g as any).managerComment ? "rejected" : "draft";
+    case "submitted":
+    case "under-review":
+      return "submitted";
+    case "approved":
+    case "locked":
+      return "approved";
+    default:
+      return null;
+  }
+}
+
+function formatTarget(g: Goal): string {
+  if (g.uomType === "TIMELINE") {
+    return g.targetDate
+      ? new Date(g.targetDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      : "—";
+  }
+  return g.targetValue != null ? String(g.targetValue) : "—";
+}
+
+interface GoalCardProps {
+  goal: Goal;
+  column: ColumnId;
+  onEdit: (g: Goal) => void;
+  onDragStart: (g: Goal) => void;
+  onDragEnd: () => void;
+  isDragging: boolean;
+}
+
+function GoalKanbanCard({ goal, column, onEdit, onDragStart, onDragEnd, isDragging }: Readonly<GoalCardProps>) {
+  const draggable = column === "draft";
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Submit Goal Sheet</DialogTitle>
-          <DialogDescription>
-            Review your goals before submitting to your manager. Once submitted, goals cannot be
-            edited until returned for rework.
-          </DialogDescription>
-        </DialogHeader>
+    <div
+      draggable={draggable}
+      onDragStart={(e) => {
+        if (!draggable) return;
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", goal.id);
+        onDragStart(goal);
+      }}
+      onDragEnd={onDragEnd}
+      className={[
+        "relative bg-white rounded-xl border border-outline-variant p-3 shadow-sm transition-all",
+        draggable ? "cursor-grab active:cursor-grabbing hover:shadow-md hover:border-primary/40" : "",
+        isDragging ? "opacity-40" : "",
+      ].join(" ")}
+    >
+      {column === "draft" && (
+        <button
+          onClick={() => onEdit(goal)}
+          title="Edit"
+          className="absolute top-2 right-2 p-1 rounded-full text-on-surface-variant hover:text-primary hover:bg-surface-container transition-colors"
+        >
+          <span className="material-symbols-outlined text-[16px]">edit</span>
+        </button>
+      )}
 
-        {/* Goals summary table */}
-        <div className="border rounded-lg overflow-hidden">
-          <table className="w-full text-xs">
-            <thead className="bg-muted/40">
-              <tr>
-                <th className="text-left px-3 py-2 font-semibold text-muted-foreground">Goal</th>
-                <th className="text-left px-3 py-2 font-semibold text-muted-foreground">Area</th>
-                <th className="text-right px-3 py-2 font-semibold text-muted-foreground w-16">
-                  Weight
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {goals.map((goal, i) => (
-                <tr key={goal.id} className={cn(i % 2 === 0 ? "bg-background" : "bg-muted/20")}>
-                  <td className="px-3 py-2 max-w-[180px] truncate font-medium">{goal.title}</td>
-                  <td className="px-3 py-2 text-muted-foreground truncate">
-                    {formatThrustArea(goal.thrustArea)}
-                  </td>
-                  <td className="px-3 py-2 text-right font-semibold tabular-nums">
-                    {goal.weightage}%
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot className="bg-muted/40 border-t">
-              <tr>
-                <td colSpan={2} className="px-3 py-2 font-semibold">
-                  Total
-                </td>
-                <td
-                  className={cn(
-                    "px-3 py-2 text-right font-bold tabular-nums",
-                    totalWeightage === 100 ? "text-emerald-600" : "text-red-600"
-                  )}
-                >
-                  {totalWeightage}%
-                </td>
-              </tr>
-            </tfoot>
-          </table>
+      <h4 className="text-[13px] font-semibold text-on-surface leading-snug line-clamp-2 pr-6 mb-1.5">
+        {goal.title}
+      </h4>
+
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 text-[11px] font-medium">
+          {THRUST_LABEL[goal.thrustArea] ?? goal.thrustArea}
+        </span>
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-sky-50 text-sky-800 border border-sky-200 text-[11px] font-medium">
+          {UOM_LABEL[goal.uomType] ?? goal.uomType}
+        </span>
+      </div>
+
+      <div className="space-y-0.5 text-[12px]">
+        <div className="flex items-center justify-between">
+          <span className="text-on-surface-variant">Target :</span>
+          <span className="font-semibold text-on-surface tabular-nums">{formatTarget(goal)}</span>
         </div>
-
-        {totalWeightage !== 100 && (
-          <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
-            <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            <span>Total weightage must equal exactly 100% before submitting.</span>
-          </div>
-        )}
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>
-            Cancel
-          </Button>
-          <Button
-            onClick={onConfirm}
-            disabled={isLoading || totalWeightage !== 100}
-          >
-            {isLoading ? "Submitting…" : "Confirm & Submit"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <div className="flex items-center justify-between">
+          <span className="text-on-surface-variant">Weightage :</span>
+          <span className="font-semibold text-on-surface tabular-nums">{goal.weightage}%</span>
+        </div>
+      </div>
+    </div>
   );
 }
 
-// ─── MyGoals ──────────────────────────────────────────────────────────────────
-
 export default function MyGoals() {
-  const { currentUser } = useAuth();
+  const navigate = useNavigate();
+  const { currentUser } = useAuthStore();
+  const activeWindow = useCycleStore((s) => s.activeWindow);
+  const { data: goals = [], isLoading } = useMyGoals(activeWindow?.id);
+  const submitMutation = useSubmitSheet(activeWindow?.id ?? "");
   const userId = currentUser?.id ?? "";
 
-  const { data: goals = [], isLoading: goalsLoading } = useMyGoals(CYCLE_ID);
-  const { data: sheet, isLoading: sheetLoading } = useMySheet(CYCLE_ID);
-  const { isWindowOpen } = useWindowStatus();
-  const weightage = useWeightage(goals);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<ColumnId | null>(null);
 
-  const createGoal = useCreateGoal();
-  const updateGoal = useUpdateGoal();
-  const deleteGoal = useDeleteGoal();
-  const submitSheet = useSubmitSheet(CYCLE_ID);
-
-  // Sheet state
-  const [sheetMode, setSheetMode] = useState<"create" | "edit" | null>(null);
-  const [editTarget, setEditTarget] = useState<Goal | null>(null);
-
-  // Confirm delete dialog
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-
-  // Submit dialog
-  const [submitOpen, setSubmitOpen] = useState(false);
-
-  const isLoading = goalsLoading || sheetLoading;
-  const sheetStatus = sheet?.status ?? GoalStatus.DRAFT;
-  const isDraft = sheetStatus === GoalStatus.DRAFT;
-  const isReadOnly = !isDraft || !isWindowOpen;
-
-  // ── Handlers ────────────────────────────────────────────────────────────────
-
-  function openCreate() {
-    setEditTarget(null);
-    setSheetMode("create");
+  function openEdit(_g: Goal) {
+    navigate(ROUTES.EMPLOYEE.NEW_SHEET(userId));
   }
 
-  function openEdit(goal: Goal) {
-    setEditTarget(goal);
-    setSheetMode("edit");
-  }
+  function handleDrop(targetCol: ColumnId) {
+    const id = draggingId;
+    setDraggingId(null);
+    setDragOverCol(null);
+    if (!id || targetCol !== "submitted" || !activeWindow?.id) return;
 
-  function closeSheet() {
-    setSheetMode(null);
-    setEditTarget(null);
-  }
+    const goal = goals.find((g) => g.id === id);
+    if (!goal || classifyGoal(goal) !== "draft") return;
 
-  function handleFormSubmit(data: GoalFormData) {
-    if (sheetMode === "create") {
-      createGoal.mutate(
-        {
-          ...data,
-          thrustArea: data.thrustArea as Goal["thrustArea"],
-          uomType: data.uomType as Goal["uomType"],
-          targetValue: data.uomType === UoMType.ZERO || data.uomType === UoMType.TIMELINE
-            ? null
-            : (data.targetValue ?? null),
-          targetDate: data.uomType === UoMType.TIMELINE ? data.targetDate : undefined,
-          userId,
-          cycleId: CYCLE_ID,
-        },
-        { onSuccess: closeSheet }
-      );
-    } else if (sheetMode === "edit" && editTarget) {
-      updateGoal.mutate(
-        {
-          id: editTarget.id,
-          patch: {
-            ...data,
-            thrustArea: data.thrustArea as Goal["thrustArea"],
-            uomType: data.uomType as Goal["uomType"],
-            targetValue: data.uomType === UoMType.ZERO || data.uomType === UoMType.TIMELINE
-              ? null
-              : (data.targetValue ?? null),
-            targetDate: data.uomType === UoMType.TIMELINE ? data.targetDate : undefined,
-          },
-        },
-        { onSuccess: closeSheet }
-      );
-    }
-  }
-
-  function handleDeleteConfirm() {
-    if (!deleteId) return;
-    deleteGoal.mutate(deleteId, {
-      onSuccess: () => setDeleteId(null),
+    submitMutation.mutate(undefined, {
+      onError: (err: any) => {
+        alert(err?.message ?? "Failed to submit goals for review");
+      },
     });
   }
 
-  function handleSubmitSheet() {
-    submitSheet.mutate(undefined, {
-      onSuccess: () => setSubmitOpen(false),
-    });
+  const grouped: Record<ColumnId, Goal[]> = { draft: [], submitted: [], approved: [], rejected: [] };
+  for (const g of goals) {
+    const c = classifyGoal(g);
+    if (c) grouped[c].push(g);
   }
-
-  // Submit button tooltip reason
-  function getSubmitDisabledReason(): string | null {
-    if (!isWindowOpen) return "Goal-setting window is closed";
-    if (!isDraft) return "Sheet has already been submitted";
-    if (goals.length === 0) return "Add at least one goal first";
-    if (weightage.totalWeightage !== 100) return `Total weightage is ${weightage.totalWeightage}% — must be exactly 100%`;
-    return null;
-  }
-
-  const submitDisabledReason = getSubmitDisabledReason();
-  const canSubmit = submitDisabledReason === null;
-
-  const formMutating =
-    (sheetMode === "create" && createGoal.isPending) ||
-    (sheetMode === "edit" && updateGoal.isPending);
-
-  // Edit defaults
-  const editDefaults: Partial<GoalFormData> | undefined = editTarget
-    ? {
-        title: editTarget.title,
-        description: editTarget.description,
-        thrustArea: editTarget.thrustArea,
-        uomType: editTarget.uomType,
-        targetValue: editTarget.targetValue ?? undefined,
-        targetDate: editTarget.targetDate,
-        weightage: editTarget.weightage,
-      }
-    : undefined;
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4">
+    <div className="p-margin-mobile md:p-margin-desktop max-w-[1440px] mx-auto w-full space-y-xl">
+      {/* Page header */}
+      <div className="flex items-start justify-between gap-md flex-wrap">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">My Goals</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            FY 2026 · {goals.length} goal{goals.length !== 1 ? "s" : ""} added
+          <h2 className="text-display-lg text-on-surface mb-xs">My Goals</h2>
+          <p className="text-body-lg text-on-surface-variant">
+            Manage your goals across stages. Drag a draft into{" "}
+            <span className="font-medium text-on-surface">Submitted</span> to send for approval.
           </p>
         </div>
+        <button
+          onClick={() => navigate(ROUTES.EMPLOYEE.NEW_SHEET(userId))}
+          className="inline-flex items-center gap-sm bg-primary text-on-primary rounded-lg py-2 px-md text-title-md border-t border-white/20 shadow-level-1 hover:opacity-90 transition-all"
+        >
+          <span className="material-symbols-outlined text-[18px]">add</span>
+          New Goal
+        </button>
+      </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          {/* Sheet status badge */}
-          {!isLoading && <GoalStatusBadge status={sheetStatus} />}
+      {/* Kanban — always 4 columns in a single row, horizontal scroll on small screens */}
+      <div className="w-full overflow-x-auto pb-2">
+        <div className="grid grid-cols-4 gap-3 min-w-[1000px]">
+          {COLUMNS.map((col) => {
+            const items = grouped[col.id];
+            const isDropTarget = col.id === "submitted";
+            const isHovered = dragOverCol === col.id && isDropTarget && draggingId != null;
 
-          {/* Submit button */}
-          {!isReadOnly && (
-            <div className="relative group">
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1.5"
-                onClick={() => setSubmitOpen(true)}
-                disabled={!canSubmit}
+            return (
+              <div
+                key={col.id}
+                onDragOver={(e) => {
+                  if (!isDropTarget || draggingId == null) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  if (dragOverCol !== col.id) setDragOverCol(col.id);
+                }}
+                onDragLeave={() => {
+                  if (dragOverCol === col.id) setDragOverCol(null);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  handleDrop(col.id);
+                }}
+                className={[
+                  "rounded-xl border border-outline-variant bg-surface-container-lowest flex flex-col overflow-hidden transition-all",
+                  isHovered ? "ring-2 ring-primary border-primary bg-primary-container/20" : "",
+                ].join(" ")}
               >
-                <Send className="h-3.5 w-3.5" />
-                Submit Sheet
-              </Button>
-              {!canSubmit && submitDisabledReason && (
-                <div className="absolute right-0 top-full mt-1.5 z-50 hidden group-hover:block">
-                  <div className="flex items-start gap-1.5 bg-popover border rounded-md shadow-md px-3 py-2 text-xs max-w-[220px] whitespace-normal">
-                    <InfoIcon className="h-3 w-3 mt-0.5 shrink-0 text-muted-foreground" />
-                    {submitDisabledReason}
+                {/* Column header */}
+                <div className="px-3 py-2.5 border-b border-outline-variant flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${col.dot}`} />
+                    <h3 className="text-[13px] font-semibold text-on-surface">{col.title}</h3>
                   </div>
+                  <span className="text-[12px] text-on-surface-variant tabular-nums">{items.length}</span>
                 </div>
-              )}
-            </div>
-          )}
 
-          {/* Add goal button */}
-          {!isReadOnly && (
-            <Button
-              size="sm"
-              className="gap-1.5"
-              onClick={openCreate}
-              disabled={!weightage.canAddMore}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add Goal
-            </Button>
-          )}
+                {/* Column body */}
+                <div className="p-2.5 flex-1 space-y-2.5 min-h-[300px] bg-surface-container/30">
+                  {(() => {
+                    if (isLoading) {
+                      return (
+                        <div className="space-y-2.5">
+                          <div className="h-24 bg-white rounded-xl border border-outline-variant animate-pulse" />
+                          <div className="h-24 bg-white rounded-xl border border-outline-variant animate-pulse" />
+                        </div>
+                      );
+                    }
+                    if (items.length === 0) {
+                      return (
+                        <div className="h-full min-h-[260px] flex items-center justify-center text-center text-on-surface-variant">
+                          <p className="text-[12px]">{col.emptyMsg}</p>
+                        </div>
+                      );
+                    }
+                    return items.map((goal) => (
+                      <GoalKanbanCard
+                        key={goal.id}
+                        goal={goal}
+                        column={col.id}
+                        onEdit={openEdit}
+                        onDragStart={(g) => setDraggingId(g.id)}
+                        onDragEnd={() => {
+                          setDraggingId(null);
+                          setDragOverCol(null);
+                        }}
+                        isDragging={draggingId === goal.id}
+                      />
+                    ));
+                  })()}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      {/* Weightage bar */}
-      {!isLoading && goals.length > 0 && (
-        <WeightageBar goals={goals} showDetails />
-      )}
-
-      {/* Window closed notice */}
-      {!isWindowOpen && (
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-sm">
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          <span>The goal-setting window is closed. Goals are read-only.</span>
+      {submitMutation.isPending && (
+        <div className="fixed bottom-lg right-lg bg-surface-container-highest text-on-surface px-md py-sm rounded-lg shadow-level-3 border border-outline-variant flex items-center gap-sm">
+          <span className="material-symbols-outlined animate-spin text-[18px]">progress_activity</span>
+          Submitting for approval…
         </div>
       )}
-
-      {/* Goal list */}
-      {isLoading ? (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {["a", "b", "c", "d"].map((k) => (
-            <Skeleton key={k} className="h-44 rounded-xl" />
-          ))}
-        </div>
-      ) : goals.length === 0 ? (
-        <EmptyState
-          variant={isWindowOpen ? "no-goals" : "window-closed"}
-          action={
-            isWindowOpen
-              ? { label: "Add First Goal", onClick: openCreate }
-              : undefined
-          }
-        />
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {goals.map((goal) => (
-            <GoalCard
-              key={goal.id}
-              goal={goal}
-              isReadOnly={isReadOnly}
-              isWindowOpen={isWindowOpen}
-              onEdit={openEdit}
-              onDelete={(id) => setDeleteId(id)}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Add / Edit Sheet */}
-      <Sheet open={sheetMode !== null} onOpenChange={(open) => !open && closeSheet()}>
-        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
-          <SheetHeader className="mb-4">
-            <SheetTitle>{sheetMode === "create" ? "Add Goal" : "Edit Goal"}</SheetTitle>
-            <SheetDescription>
-              {sheetMode === "create"
-                ? "Define a new goal for FY 2026."
-                : "Update the details of this goal."}
-            </SheetDescription>
-          </SheetHeader>
-
-          {sheetMode && (
-            <GoalForm
-              mode={sheetMode}
-              defaultValues={editDefaults}
-              remainingWeightage={weightage.remainingWeightage}
-              onSubmit={handleFormSubmit}
-              onCancel={closeSheet}
-              isLoading={formMutating}
-            />
-          )}
-        </SheetContent>
-      </Sheet>
-
-      {/* Delete confirm */}
-      <ConfirmDialog
-        open={Boolean(deleteId)}
-        onOpenChange={(open) => !open && setDeleteId(null)}
-        title="Delete Goal"
-        description="This action cannot be undone. The goal will be permanently removed from your sheet."
-        confirmLabel="Delete"
-        variant="destructive"
-        onConfirm={handleDeleteConfirm}
-        isLoading={deleteGoal.isPending}
-      />
-
-      {/* Submit sheet dialog */}
-      <SubmitSheetDialog
-        open={submitOpen}
-        onOpenChange={setSubmitOpen}
-        goals={goals}
-        totalWeightage={weightage.totalWeightage}
-        onConfirm={handleSubmitSheet}
-        isLoading={submitSheet.isPending}
-      />
     </div>
   );
 }

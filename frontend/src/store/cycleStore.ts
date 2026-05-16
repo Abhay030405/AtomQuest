@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { differenceInDays, parseISO, isAfter, isBefore } from "date-fns";
 import type { CycleConfig } from "@/types/cycle.types";
 import { CyclePhase } from "@/types/cycle.types";
-import { CYCLE_FY2026 } from "@/mocks/mockCycleConfig";
+import { cycleService } from "@/services/cycle.service";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -22,8 +22,11 @@ interface CycleState {
   currentPhase: CyclePhase | null;
   isWindowOpen: boolean;
   daysRemaining: number;
+  isLoading: boolean;
+  loadError: string | null;
 
-  initialize: () => void;
+  initialize: () => Promise<void>;
+  refresh: () => Promise<void>;
   getWindowStatusMessage: () => string;
 }
 
@@ -34,17 +37,41 @@ export const useCycleStore = create<CycleState>()((set, get) => ({
   currentPhase: null,
   isWindowOpen: false,
   daysRemaining: 0,
+  isLoading: false,
+  loadError: null,
 
-  initialize: () => {
-    const cycle = CYCLE_FY2026;
-    const isWindowOpen = computeIsWindowOpen(cycle.windowOpen, cycle.windowClose);
-    const daysRemaining = computeDaysRemaining(cycle.windowClose);
-    set({
-      activeWindow: cycle,
-      currentPhase: cycle.phase as CyclePhase,
-      isWindowOpen,
-      daysRemaining,
-    });
+  initialize: async () => {
+    if (get().activeWindow || get().isLoading) return;
+    await get().refresh();
+  },
+
+  refresh: async () => {
+    set({ isLoading: true, loadError: null });
+    try {
+      const status = await cycleService.getActive();
+      if (!status.cycle) {
+        set({
+          activeWindow: null,
+          currentPhase: null,
+          isWindowOpen: false,
+          daysRemaining: 0,
+          isLoading: false,
+        });
+        return;
+      }
+      set({
+        activeWindow: status.cycle,
+        currentPhase: status.cycle.phase,
+        isWindowOpen: status.isOpen,
+        daysRemaining: status.daysRemaining,
+        isLoading: false,
+      });
+    } catch (err) {
+      set({
+        isLoading: false,
+        loadError: err instanceof Error ? err.message : "Failed to load cycle",
+      });
+    }
   },
 
   getWindowStatusMessage: () => {
@@ -72,3 +99,6 @@ export const useCycleStore = create<CycleState>()((set, get) => ({
     return `${phaseLabel}: Window closed on ${dateStr}`;
   },
 }));
+
+// Re-export helpers to silence "unused" warnings if imported elsewhere.
+export { computeIsWindowOpen, computeDaysRemaining };
