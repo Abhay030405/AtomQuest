@@ -2,9 +2,10 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
 import { useCycleStore } from "@/store/cycleStore";
-import { useMyGoals, useSubmitSheet } from "@/hooks/useGoals";
+import { useMyGoals, useSubmitSheet, useCreateGoal, useUpdateGoal } from "@/hooks/useGoals";
 import { ROUTES } from "@/constants/routes";
 import type { Goal } from "@/types/goal.types";
+import { GoalFormDialog, type GoalFormValues } from "@/components/goals/GoalFormDialog";
 
 type ColumnId = "draft" | "submitted" | "approved" | "rejected";
 
@@ -139,8 +140,34 @@ export default function MyGoals() {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<ColumnId | null>(null);
 
-  function openEdit(_g: Goal) {
-    navigate(ROUTES.EMPLOYEE.NEW_SHEET(userId));
+  // Goal create/edit dialog state
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<Goal | null>(null);
+  const createGoal = useCreateGoal();
+  const updateGoal = useUpdateGoal();
+  const submitting = createGoal.isPending || updateGoal.isPending;
+
+  function openEdit(g: Goal) {
+    setEditing(g);
+    setDialogOpen(true);
+  }
+
+  function openCreate() {
+    setEditing(null);
+    setDialogOpen(true);
+  }
+
+  async function handleDialogSubmit(values: GoalFormValues) {
+    if (editing) {
+      await updateGoal.mutateAsync({ id: editing.id, patch: values });
+    } else {
+      if (!activeWindow?.id) throw new Error("No active cycle");
+      await createGoal.mutateAsync({
+        ...values,
+        cycleId: activeWindow.id,
+        userId,
+      } as any);
+    }
   }
 
   function handleDrop(targetCol: ColumnId) {
@@ -177,7 +204,7 @@ export default function MyGoals() {
           </p>
         </div>
         <button
-          onClick={() => navigate(ROUTES.EMPLOYEE.NEW_SHEET(userId))}
+          onClick={openCreate}
           className="inline-flex items-center gap-sm bg-primary text-on-primary rounded-lg py-2 px-md text-title-md border-t border-white/20 shadow-level-1 hover:opacity-90 transition-all"
         >
           <span className="material-symbols-outlined text-[18px]">add</span>
@@ -269,6 +296,15 @@ export default function MyGoals() {
           Submitting for approval…
         </div>
       )}
+
+      <GoalFormDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        mode={editing ? "edit" : "create"}
+        initial={editing}
+        onSubmit={handleDialogSubmit}
+        submitting={submitting}
+      />
     </div>
   );
 }
