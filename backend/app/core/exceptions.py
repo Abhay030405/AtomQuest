@@ -55,8 +55,8 @@ class WindowClosedError(AtomQuestException):
 
 
 class WeightageError(AtomQuestException):
-	def __init__(self) -> None:
-		super().__init__("WEIGHTAGE_ERROR", "Total weightage must equal 100%", status.HTTP_422_UNPROCESSABLE_ENTITY)
+	def __init__(self, message: str = "Total weightage must equal 100%", code: str = "WEIGHTAGE_ERROR") -> None:
+		super().__init__(code, message, status.HTTP_422_UNPROCESSABLE_ENTITY)
 
 
 class GoalCountError(AtomQuestException):
@@ -111,6 +111,94 @@ class InvalidCredentialsError(AtomQuestException):
 		super().__init__("INVALID_CREDENTIALS", "Invalid email or password", status.HTTP_401_UNAUTHORIZED)
 
 
+# Phase 2 — Achievement ledger ---------------------------------------------
+
+
+class AchievementNotFoundError(AtomQuestException):
+	def __init__(self) -> None:
+		super().__init__(
+			"ACHIEVEMENT_NOT_FOUND",
+			"Achievement not found",
+			status.HTTP_404_NOT_FOUND,
+		)
+
+
+class DuplicateAchievementError(AtomQuestException):
+	def __init__(self) -> None:
+		super().__init__(
+			"DUPLICATE_ACHIEVEMENT",
+			"An achievement already exists for this goal and quarter. Use resubmit to update.",
+			status.HTTP_409_CONFLICT,
+		)
+
+
+class SharedGoalAchievementError(AtomQuestException):
+	def __init__(self) -> None:
+		super().__init__(
+			"MANAGED_BY_GOAL_OWNER",
+			"Managed by the goal owner — achievement is synced from the upstream shared goal.",
+			status.HTTP_403_FORBIDDEN,
+		)
+
+
+class GoalNotLockedError(AtomQuestException):
+	def __init__(self) -> None:
+		super().__init__(
+			"GOAL_NOT_LOCKED",
+			"Achievements can only be logged against locked goals",
+			status.HTTP_422_UNPROCESSABLE_ENTITY,
+		)
+
+
+class BulkValidationFailedError(AtomQuestException):
+	def __init__(self, errors: list[dict[str, Any]]) -> None:
+		super().__init__(
+			"BULK_VALIDATION_FAILED",
+			f"{len(errors)} achievement(s) failed validation; no rows were written.",
+			status.HTTP_422_UNPROCESSABLE_ENTITY,
+		)
+		self.errors = errors
+
+
+# Phase 2 — Manager check-ins
+
+class CheckinNotFoundError(AtomQuestException):
+	def __init__(self) -> None:
+		super().__init__(
+			"CHECKIN_NOT_FOUND",
+			"Check-in not found",
+			status.HTTP_404_NOT_FOUND,
+		)
+
+
+class DuplicateCheckinError(AtomQuestException):
+	def __init__(self) -> None:
+		super().__init__(
+			"DUPLICATE_CHECKIN",
+			"A check-in already exists for this employee in this quarter and cycle. Use PATCH to amend.",
+			status.HTTP_409_CONFLICT,
+		)
+
+
+class InvalidCheckinCommentError(AtomQuestException):
+	def __init__(self) -> None:
+		super().__init__(
+			"INVALID_CHECKIN_COMMENT",
+			"Check-in comment must be at least 20 characters.",
+			status.HTTP_400_BAD_REQUEST,
+		)
+
+
+class NotInTeamError(AtomQuestException):
+	def __init__(self) -> None:
+		super().__init__(
+			"NOT_IN_TEAM",
+			"Employee is not in your direct reports.",
+			status.HTTP_403_FORBIDDEN,
+		)
+
+
+
 def _build_error_response(code: str, message: str, field: Optional[str]) -> dict[str, Any]:
 	return {
 		"success": False,
@@ -126,6 +214,9 @@ def _build_error_response(code: str, message: str, field: Optional[str]) -> dict
 
 def atomquest_exception_handler(_: Request, exc: AtomQuestException) -> JSONResponse:
 	payload = _build_error_response(exc.code, exc.message, exc.field)
+	# Bulk validation surfaces a `details` list of per-row errors for clients.
+	if isinstance(exc, BulkValidationFailedError):
+		payload["error"]["details"] = exc.errors
 	return JSONResponse(status_code=exc.status_code, content=payload)
 
 

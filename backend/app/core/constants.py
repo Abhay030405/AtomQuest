@@ -39,6 +39,7 @@ class ThrustArea(str, Enum):
 class GoalSheetStatus(str, Enum):
 	DRAFT = "draft"
 	SUBMITTED = "submitted"
+	UNDER_REVIEW = "under_review"
 	APPROVED = "approved"
 
 
@@ -85,6 +86,14 @@ class Permission(str, Enum):
 	VIEW_ALL_GOALS = "view_all_goals"
 	EXPORT_REPORTS = "export_reports"
 	VIEW_AUDIT_LOG = "view_audit_log"
+	# Phase 2 permissions
+	LOG_ACHIEVEMENT = "log_achievement"
+	RESUBMIT_ACHIEVEMENT = "resubmit_achievement"
+	CONDUCT_CHECKIN = "conduct_checkin"
+	EDIT_CHECKIN = "edit_checkin"
+	ACKNOWLEDGE_CHECKIN = "acknowledge_checkin"
+	VIEW_ANALYTICS = "view_analytics"
+	EXPORT_ACHIEVEMENT_REPORT = "export_achievement_report"
 
 
 class NotificationType(str, Enum):
@@ -97,12 +106,53 @@ class NotificationType(str, Enum):
 	WINDOW_OPENING = "window_opening"
 
 
+# Phase 2 enums --------------------------------------------------------------
+
+
+class Quarter(str, Enum):
+	"""Quarter labels used by Phase 2 achievements / check-ins / analytics."""
+
+	Q1 = "q1"
+	Q2 = "q2"
+	Q3 = "q3"
+	Q4 = "q4"
+
+
+class AchievementStatus(str, Enum):
+	NOT_STARTED = "not_started"
+	ON_TRACK = "on_track"
+	COMPLETED = "completed"
+
+
+class CheckinCommentType(str, Enum):
+	STRUCTURED = "structured"
+	FREEFORM = "freeform"
+
+
+class CheckinRatingSentiment(str, Enum):
+	POSITIVE = "positive"
+	NEUTRAL = "neutral"
+	NEEDS_ATTENTION = "needs_attention"
+
+
+class CheckinEventType(str, Enum):
+	"""Build plan §1 uses UPPERCASE values exactly for this enum."""
+
+	CREATED = "CREATED"
+	UPDATED = "UPDATED"
+	ACKNOWLEDGED = "ACKNOWLEDGED"
+
+
 RBAC_MATRIX = {
 	UserRole.EMPLOYEE: [
 		Permission.CREATE_GOAL,
 		Permission.SUBMIT_GOAL_SHEET,
 		Permission.EDIT_OWN_DRAFT_GOAL,
 		Permission.VIEW_OWN_GOALS,
+		# Phase 2
+		Permission.LOG_ACHIEVEMENT,
+		Permission.RESUBMIT_ACHIEVEMENT,
+		Permission.ACKNOWLEDGE_CHECKIN,
 	],
 	UserRole.MANAGER: [
 		Permission.VIEW_OWN_GOALS,
@@ -111,6 +161,11 @@ RBAC_MATRIX = {
 		Permission.REJECT_GOAL,
 		Permission.EDIT_GOAL_IN_REVIEW,
 		Permission.RETURN_FOR_REWORK,
+		# Phase 2
+		Permission.CONDUCT_CHECKIN,
+		Permission.EDIT_CHECKIN,
 	],
+	# ADMIN inherits every Permission member via list(Permission), which now
+	# includes the Phase 2 keys VIEW_ANALYTICS and EXPORT_ACHIEVEMENT_REPORT.
 	UserRole.ADMIN: list(Permission),
 }

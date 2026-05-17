@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -41,6 +41,7 @@ router = APIRouter()
 
 class SubmitSheetRequest(BaseSchema):
 	sheet_id: UUID
+	goal_ids: Optional[List[UUID]] = None
 
 
 def _build_goal_response(goal: Goal, sheet_status_override=None) -> GoalResponse:
@@ -114,7 +115,7 @@ async def submit_sheet(
 	db: AsyncSession = Depends(get_db),
 	current_user=Depends(require_permission(Permission.SUBMIT_GOAL_SHEET)),
 ) -> APIResponse[SheetSubmitResponse]:
-	sheet = await goal_service.submit_sheet(payload.sheet_id, current_user, db)
+	sheet = await goal_service.submit_sheet(payload.sheet_id, current_user, db, goal_ids=payload.goal_ids)
 	response = SheetSubmitResponse(
 		message="Goal sheet submitted successfully",
 		sheet=_build_sheet_response(sheet),
@@ -168,6 +169,16 @@ async def create_goal(
 	current_user=Depends(require_permission(Permission.CREATE_GOAL)),
 ) -> APIResponse[GoalResponse]:
 	goal = await goal_service.create_goal(current_user, payload, db)
+	return APIResponse.ok(_build_goal_response(goal))
+
+
+@router.post("/{goal_id}/submit", response_model=APIResponse[GoalResponse])
+async def submit_single_goal(
+	goal_id: UUID,
+	db: AsyncSession = Depends(get_db),
+	current_user=Depends(require_permission(Permission.SUBMIT_GOAL_SHEET)),
+) -> APIResponse[GoalResponse]:
+	goal = await goal_service.submit_goal(goal_id, current_user, db)
 	return APIResponse.ok(_build_goal_response(goal))
 
 

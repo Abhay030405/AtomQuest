@@ -16,7 +16,6 @@ class UserBase(BaseSchema):
 	full_name: str
 	role: UserRole
 	department_id: Optional[UUID] = None
-	employee_code: Optional[str] = None
 
 
 class UserCreate(UserBase):
@@ -44,6 +43,7 @@ class UserUpdate(BaseSchema):
 
 class UserResponse(UserBase):
 	id: UUID
+	employee_code: Optional[str] = None  # server-generated, never client-supplied
 	manager_id: Optional[UUID] = None
 	manager_name: Optional[str] = None
 	department_name: Optional[str] = None

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
@@ -7,8 +8,10 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.constants import AuditAction, GoalEventType, UserRole
+from app.core.constants import AuditAction, GoalEventType, Quarter, UserRole
+from app.models.achievement import Achievement
 from app.models.audit_log import AuditLog
+from app.models.goal import Goal
 from app.models.goal_event import GoalEvent
 from app.repositories.base_repository import BaseRepository
 from app.schemas.audit import AuditFilter
@@ -88,3 +91,53 @@ class AuditRepository(BaseRepository[AuditLog]):
 		)
 		result = await self.session.execute(stmt)
 		return list(result.scalars().all())
+
+	async def get_achievement_changes(
+		self,
+		user_id: Optional[UUID] = None,
+		quarter: Optional[Quarter] = None,
+		date_from: Optional[datetime] = None,
+		date_to: Optional[datetime] = None,
+		skip: int = 0,
+		limit: int = 50,
+	) -> tuple[list[AuditLog], int]:
+		"""Audit-log slice scoped to achievement edits.
+
+		Matches the existing `get_filtered` pattern: returns
+		`(rows, total)` with offset/limit pagination. Filters rows whose
+		`table_name` is `achievements` or `achievement_versions`.
+
+		`user_id` and `quarter` filter by joining `achievements` →
+		`goals` to resolve ownership and quarter scope. Rows targeting
+		`achievement_versions` are resolved via the same chain.
+		"""
+		base = select(AuditLog).options(selectinload(AuditLog.actor)).where(
+			AuditLog.table_name.in_(("achievements", "achievement_versions"))
+		)
+
+		if date_from is not None:
+			base = base.where(AuditLog.changed_at >= date_from)
+		if date_to is not None:
+			base = base.where(AuditLog.changed_at <= date_to)
+
+		if user_id is not None or quarter is not None:
+			# Join Achievement on record_id (works for table_name='achievements')
+			base = base.join(
+				Achievement,
+				and_(
+					AuditLog.table_name == "achievements",
+					AuditLog.record_id == Achievement.id,
+				),
+			).join(Goal, Achievement.goal_id == Goal.id)
+			if user_id is not None:
+				base = base.where(Goal.user_id == user_id)
+			if quarter is not None:
+				base = base.where(Achievement.quarter == quarter)
+
+		count_stmt = select(func.count()).select_from(base.subquery())
+		total_result = await self.session.execute(count_stmt)
+		total = int(total_result.scalar_one())
+
+		stmt = base.order_by(AuditLog.changed_at.desc()).offset(skip).limit(limit)
+		result = await self.session.execute(stmt)
+		return list(result.scalars().all()), total
