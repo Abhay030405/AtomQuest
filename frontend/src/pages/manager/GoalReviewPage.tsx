@@ -24,7 +24,7 @@ export default function GoalReviewPage() {
   async function handleApprove() {
     if (!sheetId) return;
     try {
-      await approveSheet.mutateAsync({ sheetId });
+      await approveSheet.mutateAsync(sheetId);
       toast.success("Goal sheet approved");
       navigate(ROUTES.MANAGER.REVIEW(currentUser?.id ?? ""));
     } catch {
@@ -38,7 +38,7 @@ export default function GoalReviewPage() {
       return;
     }
     try {
-      await returnForRework.mutateAsync({ sheetId, comment });
+      await returnForRework.mutateAsync({ sheetId, reason: comment });
       toast.success("Returned for rework");
       navigate(ROUTES.MANAGER.REVIEW(currentUser?.id ?? ""));
     } catch {
@@ -72,11 +72,11 @@ export default function GoalReviewPage() {
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-md border-b border-outline-variant pb-md">
         <div className="flex items-center gap-md">
           <div className="w-14 h-14 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-headline-md font-bold border border-outline-variant">
-            {initials(sheet.employeeName ?? "")}
+            {initials((sheet as any).employeeName ?? "")}
           </div>
           <div>
-            <h2 className="text-headline-md text-on-surface">{sheet.employeeName}'s Goal Sheet</h2>
-            <p className="text-body-md text-on-surface-variant">{sheet.employeeRole ?? "—"} • {sheet.cycleName ?? "—"}</p>
+            <h2 className="text-headline-md text-on-surface">{(sheet as any).employeeName}'s Goal Sheet</h2>
+            <p className="text-body-md text-on-surface-variant">{(sheet as any).employeeRole ?? "—"} • {(sheet as any).cycleName ?? "—"}</p>
           </div>
         </div>
         <div className="bg-surface-container border border-outline-variant rounded-lg p-sm flex items-center gap-md min-w-[200px]">

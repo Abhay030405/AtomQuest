@@ -15,7 +15,6 @@ const LoginPage = lazy(() => import("@/pages/auth/LoginPage"));
 
 const EmployeeDashboard = lazy(() => import("@/pages/employee/EmployeeDashboard"));
 const MyGoals = lazy(() => import("@/pages/employee/MyGoals"));
-const NewGoalSheetPage = lazy(() => import("@/pages/employee/NewGoalSheetPage"));
 const QuarterlyUpdate = lazy(() => import("@/pages/employee/QuarterlyUpdate"));
 
 const ManagerDashboard = lazy(() => import("@/pages/manager/ManagerDashboard"));
@@ -25,6 +24,7 @@ const TeamGoalsPage = lazy(() => import("@/pages/manager/TeamGoalsPage"));
 const CheckinModule = lazy(() => import("@/pages/manager/CheckinModule"));
 
 const AdminDashboard = lazy(() => import("@/pages/admin/AdminDashboard"));
+const PersonnelPage = lazy(() => import("@/pages/admin/PersonnelPage"));
 const CycleConfigPage = lazy(() => import("@/pages/admin/CycleConfigPage"));
 const SharedGoalsPage = lazy(() => import("@/pages/admin/SharedGoalsPage"));
 const AuditTrailPage = lazy(() => import("@/pages/admin/AuditTrailPage"));
@@ -94,7 +94,6 @@ export default function App() {
             <Route element={<AppShell />}>
               <Route path={ROUTE_PATTERNS.EMPLOYEE.ROOT} element={<EmployeeDashboard />} />
               <Route path={ROUTE_PATTERNS.EMPLOYEE.GOALS} element={<MyGoals />} />
-              <Route path={ROUTE_PATTERNS.EMPLOYEE.NEW_SHEET} element={<NewGoalSheetPage />} />
               <Route path={ROUTE_PATTERNS.EMPLOYEE.QUARTERLY_UPDATE} element={<QuarterlyUpdate />} />
             </Route>
           </Route>
@@ -118,6 +117,7 @@ export default function App() {
           <Route element={<ProtectedRoute requiredPermission={Permission.CONFIGURE_CYCLE} />}>
             <Route element={<AppShell />}>
               <Route path={ROUTE_PATTERNS.ADMIN.ROOT} element={<AdminDashboard />} />
+              <Route path={ROUTE_PATTERNS.ADMIN.PERSONNEL} element={<PersonnelPage />} />
               <Route path={ROUTE_PATTERNS.ADMIN.CYCLES} element={<CycleConfigPage />} />
               <Route path={ROUTE_PATTERNS.ADMIN.SHARED_GOALS} element={<SharedGoalsPage />} />
               <Route path={ROUTE_PATTERNS.ADMIN.AUDIT} element={<AuditTrailPage />} />

@@ -7,12 +7,10 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { UOM_TYPE_META } from "@/constants/uomTypes";
 import { useTeamGoals } from "@/hooks/useGoals";
 import { useDirectReports } from "@/hooks/useApprovals";
+import { useCycleStore } from "@/store/cycleStore";
 import { GoalStatus, UoMType } from "@/types/goal.types";
 import type { Goal } from "@/types/goal.types";
-import { USERS_BY_ID } from "@/mocks/mockUsers";
 import { cn } from "@/lib/utils";
-
-const CYCLE_ID = "cycle-fy2026";
 
 // ─── Phase timeline ───────────────────────────────────────────────────────────
 
@@ -125,7 +123,9 @@ function ApprovedGoalRow({ goal }: Readonly<{ goal: Goal }>) {
 // ─── CheckinModule ────────────────────────────────────────────────────────────
 
 export default function CheckinModule() {
-  const { data: allGoals = [], isLoading: goalsLoading } = useTeamGoals(CYCLE_ID);
+  const { activeWindow } = useCycleStore();
+  const cycleId = activeWindow?.id ?? "";
+  const { data: allGoals = [], isLoading: goalsLoading } = useTeamGoals(cycleId);
   const { data: directReports = [], isLoading: reportsLoading } = useDirectReports();
 
   const isLoading = goalsLoading || reportsLoading;
@@ -134,7 +134,6 @@ export default function CheckinModule() {
   const approvedGoals = allGoals.filter(
     (g) =>
       reportIds.includes(g.userId) &&
-      g.cycleId === CYCLE_ID &&
       (g.status === GoalStatus.APPROVED || g.status === GoalStatus.LOCKED)
   );
 

@@ -1,6 +1,5 @@
 import { Link } from "react-router-dom";
 import { useOrgStats, useAdminAuditLog, useAdminAllSheets } from "@/hooks/useAdmin";
-import { useAllGoals } from "@/hooks/useGoals";
 import { useAuth } from "@/hooks/useAuth";
 import { ROUTES } from "@/constants/routes";
 import { timeAgo } from "@/utils/date.util";
@@ -27,7 +26,7 @@ export default function AdminDashboard() {
   const { data: allSheetsRes, isLoading: sheetsLoading } = useAdminAllSheets(CYCLE_ID);
 
   const isLoading = statsLoading || auditLoading || sheetsLoading;
-  const sheets = allSheetsRes?.items ?? [];
+  void allSheetsRes;
   const recentLogs = auditPage?.items ?? [];
 
   const submissionRate = stats?.totalUsers

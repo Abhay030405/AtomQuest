@@ -1,23 +1,23 @@
 import { useState } from "react";
-import { useMyGoals, useSubmitSheet } from "@/hooks/useGoals";
+import { useMyGoals } from "@/hooks/useGoals";
 import { useCycleStore } from "@/store/cycleStore";
 
 const STATUS_OPTIONS = ["Not Started", "On Track", "Behind", "Completed"];
 
 export default function QuarterlyUpdate() {
-  const { activeConfig } = useCycleStore();
-  const cycleName = activeConfig?.name ?? "Current Quarter";
-  const { data: goals = [], isLoading } = useMyGoals(activeConfig?.id);
+  const { activeWindow } = useCycleStore();
+  const cycleName = activeWindow?.cycleName ?? "Current Quarter";
+  const { data: goals = [], isLoading } = useMyGoals(activeWindow?.id);
 
   const approvedGoals = goals.filter((g) => g.status === "approved" || g.status === "locked");
-  const onTrack = approvedGoals.filter((g) => (g.currentValue ?? 0) >= 60).length;
+  const onTrack = approvedGoals.filter((g) => ((g as any).currentValue ?? 0) >= 60).length;
 
   const [actuals, setActuals] = useState<Record<string, string>>({});
   const [statuses, setStatuses] = useState<Record<string, string>>({});
 
   const totalProgress =
     approvedGoals.length > 0
-      ? Math.round(approvedGoals.reduce((sum, g) => sum + (g.currentValue ?? 0), 0) / approvedGoals.length)
+      ? Math.round(approvedGoals.reduce((sum, g) => sum + ((g as any).currentValue ?? 0), 0) / approvedGoals.length)
       : 0;
 
   return (
@@ -94,7 +94,7 @@ export default function QuarterlyUpdate() {
                   <div>
                     <div className="flex items-center gap-xs mb-xs">
                       <span className="material-symbols-outlined text-secondary text-[16px]">lock</span>
-                      <span className="text-label-md text-secondary uppercase">{goal.uom ?? "Goal"}</span>
+                      <span className="text-label-md text-secondary uppercase">{(goal as any).uom ?? "Goal"}</span>
                     </div>
                     <h3 className="text-title-lg text-on-surface">{goal.title}</h3>
                     <p className="text-body-md text-on-surface-variant mt-xs line-clamp-2">{goal.description}</p>
@@ -126,7 +126,7 @@ export default function QuarterlyUpdate() {
                       <label className="text-label-md text-on-surface-variant block mb-xs">Actual</label>
                       <input
                         type="text"
-                        value={actuals[goal.id] ?? String(goal.currentValue ?? "")}
+                        value={actuals[goal.id] ?? String((goal as any).currentValue ?? "")}
                         onChange={(e) => setActuals((a) => ({ ...a, [goal.id]: e.target.value }))}
                         className="w-full bg-surface-container-lowest border border-outline-variant text-on-surface text-body-md rounded-lg focus:ring-2 focus:ring-primary focus:border-primary px-sm py-2"
                       />
@@ -137,10 +137,10 @@ export default function QuarterlyUpdate() {
                 <div className="px-md pb-md">
                   <div className="flex justify-between text-label-md text-on-surface-variant mb-xs">
                     <span>Progress</span>
-                    <span>{goal.currentValue ?? 0}%</span>
+                    <span>{(goal as any).currentValue ?? 0}%</span>
                   </div>
                   <div className="w-full bg-surface-container-high rounded-full h-2">
-                    <div className="bg-primary h-2 rounded-full" style={{ width: `${Math.min(goal.currentValue ?? 0, 100)}%` }} />
+                    <div className="bg-primary h-2 rounded-full" style={{ width: `${Math.min((goal as any).currentValue ?? 0, 100)}%` }} />
                   </div>
                 </div>
 

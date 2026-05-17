@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useAllGoals } from "@/hooks/useGoals";
 import { useAdminAuditLog, useUnlockGoal } from "@/hooks/useAdmin";
 import { USERS_BY_ID } from "@/mocks/mockUsers";
-import { GoalStatus, UoMType } from "@/types/goal.types";
+import { GoalStatus } from "@/types/goal.types";
 import type { Goal } from "@/types/goal.types";
 import { UOM_TYPE_META } from "@/constants/uomTypes";
 import { formatThrustArea } from "@/utils/format.util";

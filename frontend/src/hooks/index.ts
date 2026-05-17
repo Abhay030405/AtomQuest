@@ -10,6 +10,7 @@ export {
   useUpdateGoal,
   useDeleteGoal,
   useSubmitSheet,
+  useSubmitGoal,
   usePendingApprovals,
   useTeamGoals,
   useAllGoals,

@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { parseISO, format, differenceInDays } from "date-fns";
-import { useCycleConfigs, useUpdateCycleConfig, useActivateCycleWindow } from "@/hooks/useAdmin";
-import { CyclePhase } from "@/types/cycle.types";
+import {
+  useCycleConfigs,
+  useUpdateCycleConfig,
+  useActivateCycleWindow,
+  useCreateCycleConfig,
+} from "@/hooks/useAdmin";
 import type { CycleConfig } from "@/types/cycle.types";
-import { quarterLabel } from "@/utils/date.util";
-import { cn } from "@/lib/utils";
+import { CyclePhase } from "@/types/cycle.types";
 import {
   Dialog,
   DialogContent,
@@ -13,14 +16,13 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 
-const PUSH_CYCLES = ["Q3 2024 Objectives", "Annual 2024 Strategic"];
-const PUSH_AUDIENCES = ["All Departments", "Engineering Only", "Sales & Marketing"];
-
-function getWindowLabel(cycle: CycleConfig): string {
-  try {
-    return `${format(parseISO(cycle.windowOpen), "MMM d")} – ${format(parseISO(cycle.windowClose), "MMM d, yyyy")}`;
-  } catch { return "—"; }
-}
+const PHASE_OPTIONS: CyclePhase[] = [
+  CyclePhase.GOAL_SETTING,
+  CyclePhase.Q1,
+  CyclePhase.Q2,
+  CyclePhase.Q3,
+  CyclePhase.Q4,
+];
 
 function getDaysRemaining(cycle: CycleConfig): string {
   if (!cycle.isActive) return "";
@@ -36,17 +38,28 @@ export default function CycleConfigPage() {
   const { data: cycles = [], isLoading } = useCycleConfigs();
   const updateCycle = useUpdateCycleConfig();
   const activateCycle = useActivateCycleWindow();
+  const createCycle = useCreateCycleConfig();
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ windowOpen: "", windowClose: "" });
   const [showAdd, setShowAdd] = useState(false);
+  const [addForm, setAddForm] = useState({
+    cycleName: "",
+    phase: CyclePhase.GOAL_SETTING as CyclePhase,
+    windowOpen: "",
+    windowClose: "",
+  });
+  const [addError, setAddError] = useState<string | null>(null);
 
-  const [unlockSearch, setUnlockSearch] = useState("");
-  const [unlockReason, setUnlockReason] = useState("");
-  const [pushCycle, setPushCycle] = useState(PUSH_CYCLES[0]);
-  const [pushAudience, setPushAudience] = useState(PUSH_AUDIENCES[0]);
-
-  const activeCycle = cycles.find((c) => c.isActive);
+  function resetAddForm() {
+    setAddForm({
+      cycleName: "",
+      phase: CyclePhase.GOAL_SETTING,
+      windowOpen: "",
+      windowClose: "",
+    });
+    setAddError(null);
+  }
 
   function startEdit(cycle: CycleConfig) {
     setEditingId(cycle.id);
@@ -75,6 +88,36 @@ export default function CycleConfigPage() {
     });
   }
 
+  function handleCreate() {
+    setAddError(null);
+    if (!addForm.cycleName.trim() || addForm.cycleName.trim().length < 3) {
+      setAddError("Cycle name must be at least 3 characters");
+      return;
+    }
+    if (!addForm.windowOpen || !addForm.windowClose) {
+      setAddError("Window open and close dates are required");
+      return;
+    }
+    if (addForm.windowOpen >= addForm.windowClose) {
+      setAddError("Window open must be before window close");
+      return;
+    }
+    createCycle.mutate(
+      {
+        cycleName: addForm.cycleName.trim(),
+        phase: addForm.phase,
+        windowOpen: addForm.windowOpen + "T00:00:00.000Z",
+        windowClose: addForm.windowClose + "T23:59:59.000Z",
+      },
+      {
+        onSuccess: () => {
+          setShowAdd(false);
+          resetAddForm();
+        },
+      },
+    );
+  }
+
   return (
     <div className="p-margin-mobile md:p-margin-desktop max-w-[1440px] mx-auto space-y-lg">
       {/* Header */}
@@ -99,9 +142,9 @@ export default function CycleConfigPage() {
       </div>
 
       {/* Bento grid */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-lg">
-        {/* Active Cycles (8 cols) */}
-        <div className="col-span-1 md:col-span-8 bg-surface-container-lowest border border-outline-variant rounded-xl shadow-level-1 flex flex-col">
+      <div className="grid grid-cols-1 gap-lg">
+        {/* Active Cycles */}
+        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl shadow-level-1 flex flex-col">
           <div className="p-lg border-b border-outline-variant flex justify-between items-center bg-surface-bright rounded-t-xl">
             <h3 className="text-title-md text-on-surface flex items-center gap-xs">
               <span className="material-symbols-outlined text-primary">calendar_month</span>
@@ -217,117 +260,97 @@ export default function CycleConfigPage() {
                       </tr>
                     );
                   })}
+                  {cycles.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="py-lg px-md text-center text-on-surface-variant text-body-md">
+                        No cycles configured yet. Click <span className="font-medium">New Cycle</span> to create one.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             )}
           </div>
         </div>
-
-        {/* Push Org Goals (4 cols) */}
-        <div className="col-span-1 md:col-span-4 bg-surface-container-lowest border border-outline-variant rounded-xl shadow-level-1 flex flex-col relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-bl-full pointer-events-none" />
-          <div className="p-lg border-b border-outline-variant flex justify-between items-center relative z-10">
-            <h3 className="text-title-md text-on-surface flex items-center gap-xs">
-              <span className="material-symbols-outlined text-secondary">domain</span>
-              Push Organization Goals
-            </h3>
-          </div>
-          <div className="p-lg flex-1 flex flex-col gap-md relative z-10">
-            <p className="text-body-md text-on-surface-variant">Assign top-down strategic objectives to departments or entire organizations.</p>
-            <div className="flex flex-col gap-sm">
-              <label className="text-label-md text-on-surface">Target Cycle</label>
-              <select
-                value={pushCycle}
-                onChange={(e) => setPushCycle(e.target.value)}
-                className="w-full p-sm rounded-lg border border-outline-variant bg-surface-container-lowest focus:border-primary focus:ring-2 focus:ring-primary/15 outline-none text-body-md text-on-surface"
-              >
-                {PUSH_CYCLES.map((c) => <option key={c}>{c}</option>)}
-              </select>
-            </div>
-            <div className="flex flex-col gap-sm">
-              <label className="text-label-md text-on-surface">Target Audience</label>
-              <select
-                value={pushAudience}
-                onChange={(e) => setPushAudience(e.target.value)}
-                className="w-full p-sm rounded-lg border border-outline-variant bg-surface-container-lowest focus:border-primary focus:ring-2 focus:ring-primary/15 outline-none text-body-md text-on-surface"
-              >
-                {PUSH_AUDIENCES.map((a) => <option key={a}>{a}</option>)}
-              </select>
-            </div>
-            <button className="mt-auto bg-surface-container-lowest border border-outline-variant text-on-surface text-label-md px-md py-sm rounded-lg shadow-level-1 hover:bg-surface-container-low transition-colors flex items-center justify-center gap-xs w-full">
-              <span className="material-symbols-outlined text-[18px]">publish</span>
-              Configure Push Draft
-            </button>
-          </div>
-        </div>
-
-        {/* Exception Handling (12 cols) */}
-        <div className="col-span-1 md:col-span-12 bg-surface-container-lowest border border-outline-variant rounded-xl shadow-level-1 flex flex-col">
-          <div className="p-lg border-b border-outline-variant flex justify-between items-center bg-surface-bright rounded-t-xl">
-            <h3 className="text-title-md text-error flex items-center gap-xs">
-              <span className="material-symbols-outlined">lock_open_right</span>
-              Exception Handling: Unlock Goals
-            </h3>
-          </div>
-          <div className="p-lg grid grid-cols-1 md:grid-cols-3 gap-lg items-end">
-            <div className="col-span-1 md:col-span-2">
-              <p className="text-body-md text-on-surface-variant mb-md">Locate specific employees to unlock their approved goals for mid-cycle revisions. An audit reason is required.</p>
-              <div className="flex gap-md flex-col md:flex-row">
-                <div className="flex-1">
-                  <label className="block text-label-md text-on-surface mb-xs">Employee Search</label>
-                  <div className="relative">
-                    <span className="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-outline">search</span>
-                    <input
-                      type="text"
-                      value={unlockSearch}
-                      onChange={(e) => setUnlockSearch(e.target.value)}
-                      placeholder="Search by name or ID..."
-                      className="w-full pl-xl pr-sm py-sm rounded-lg border border-outline-variant bg-surface-container-lowest focus:border-primary focus:ring-2 focus:ring-primary/15 outline-none text-body-md text-on-surface transition-all"
-                    />
-                  </div>
-                </div>
-                <div className="flex-1">
-                  <label className="block text-label-md text-on-surface mb-xs">Reason for Unlock (Audit Log)</label>
-                  <input
-                    type="text"
-                    value={unlockReason}
-                    onChange={(e) => setUnlockReason(e.target.value)}
-                    placeholder="e.g., Role change, shift in strategy..."
-                    className="w-full px-sm py-sm rounded-lg border border-outline-variant bg-surface-container-lowest focus:border-primary focus:ring-2 focus:ring-primary/15 outline-none text-body-md text-on-surface transition-all"
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="col-span-1 flex justify-end">
-              <button
-                disabled={!unlockSearch.trim() || !unlockReason.trim()}
-                className="bg-surface-container-lowest border border-outline-variant text-on-surface text-label-md px-lg py-sm rounded-lg shadow-level-1 hover:bg-surface-container-low transition-colors flex items-center gap-xs h-[40px] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <span className="material-symbols-outlined text-[18px]">key</span>
-                Unlock Record
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Add cycle dialog */}
-      <Dialog open={showAdd} onOpenChange={(v) => !v && setShowAdd(false)}>
-        <DialogContent className="max-w-sm">
+      <Dialog
+        open={showAdd}
+        onOpenChange={(v) => {
+          if (!v) {
+            setShowAdd(false);
+            resetAddForm();
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-title-lg text-on-surface">Add Cycle Configuration</DialogTitle>
+            <DialogTitle className="text-title-lg text-on-surface">New Cycle Configuration</DialogTitle>
           </DialogHeader>
-          <div className="py-md text-center">
-            <p className="text-body-md text-on-surface-variant">
-              New cycle creation is managed by the backend configuration team. Contact your system administrator.
-            </p>
+          <div className="py-md space-y-md">
+            <label className="flex flex-col gap-xs">
+              <span className="text-label-md text-on-surface">Cycle Name</span>
+              <input
+                type="text"
+                value={addForm.cycleName}
+                onChange={(e) => setAddForm((f) => ({ ...f, cycleName: e.target.value }))}
+                placeholder="e.g. FY2026 Goal Setting"
+                className="w-full p-sm rounded-lg border border-outline-variant bg-surface-container-lowest focus:border-primary focus:ring-2 focus:ring-primary/15 outline-none text-body-md text-on-surface"
+              />
+            </label>
+            <label className="flex flex-col gap-xs">
+              <span className="text-label-md text-on-surface">Phase</span>
+              <select
+                value={addForm.phase}
+                onChange={(e) => setAddForm((f) => ({ ...f, phase: e.target.value as CyclePhase }))}
+                className="w-full p-sm rounded-lg border border-outline-variant bg-surface-container-lowest focus:border-primary focus:ring-2 focus:ring-primary/15 outline-none text-body-md text-on-surface"
+              >
+                {PHASE_OPTIONS.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </label>
+            <div className="grid grid-cols-2 gap-md">
+              <label className="flex flex-col gap-xs">
+                <span className="text-label-md text-on-surface">Window Open</span>
+                <input
+                  type="date"
+                  value={addForm.windowOpen}
+                  onChange={(e) => setAddForm((f) => ({ ...f, windowOpen: e.target.value }))}
+                  className="w-full p-sm rounded-lg border border-outline-variant bg-surface-container-lowest focus:border-primary focus:ring-2 focus:ring-primary/15 outline-none text-body-md text-on-surface"
+                />
+              </label>
+              <label className="flex flex-col gap-xs">
+                <span className="text-label-md text-on-surface">Window Close</span>
+                <input
+                  type="date"
+                  value={addForm.windowClose}
+                  onChange={(e) => setAddForm((f) => ({ ...f, windowClose: e.target.value }))}
+                  className="w-full p-sm rounded-lg border border-outline-variant bg-surface-container-lowest focus:border-primary focus:ring-2 focus:ring-primary/15 outline-none text-body-md text-on-surface"
+                />
+              </label>
+            </div>
+            {addError && (
+              <p className="text-body-sm text-error">{addError}</p>
+            )}
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex gap-sm">
             <button
-              onClick={() => setShowAdd(false)}
+              onClick={() => {
+                setShowAdd(false);
+                resetAddForm();
+              }}
               className="bg-surface-container-lowest border border-outline-variant text-on-surface text-label-md px-md py-sm rounded-lg hover:bg-surface-container-low transition-colors"
             >
-              Close
+              Cancel
+            </button>
+            <button
+              onClick={handleCreate}
+              disabled={createCycle.isPending}
+              className="bg-primary text-on-primary text-label-md px-md py-sm rounded-lg shadow-level-1 hover:opacity-90 transition-colors disabled:opacity-50"
+            >
+              {createCycle.isPending ? "Creating…" : "Create Cycle"}
             </button>
           </DialogFooter>
         </DialogContent>

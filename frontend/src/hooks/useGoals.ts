@@ -86,9 +86,23 @@ export function useSubmitSheet(cycleId: string) {
   const userId = currentUser?.id ?? "";
 
   return useMutation({
-    mutationFn: () => goalService.submitSheet(userId, cycleId),
+    mutationFn: (goalIds?: string[]) => goalService.submitSheet(userId, cycleId, goalIds),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-sheet", userId, cycleId] });
+      qc.invalidateQueries({ queryKey: ["my-goals", userId] });
+    },
+  });
+}
+
+export function useSubmitGoal() {
+  const qc = useQueryClient();
+  const { currentUser } = useAuth();
+  const userId = currentUser?.id ?? "";
+
+  return useMutation({
+    mutationFn: (goalId: string) => goalService.submitGoal(goalId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["my-sheet", userId] });
       qc.invalidateQueries({ queryKey: ["my-goals", userId] });
     },
   });

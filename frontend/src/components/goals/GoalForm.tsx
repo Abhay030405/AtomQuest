@@ -193,7 +193,7 @@ function DateField({ value, onChange }: DateFieldProps) {
             }
           }}
           disabled={(date) => date < new Date()}
-          initialFocus
+          autoFocus
         />
       </PopoverContent>
     </Popover>

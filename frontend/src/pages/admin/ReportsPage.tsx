@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useAllGoals } from "@/hooks/useGoals";
 import { useAdminAllSheets, useAdminAuditLog } from "@/hooks/useAdmin";
-import { mockUsers, USERS_BY_ID } from "@/mocks/mockUsers";
+import { mockUsers } from "@/mocks/mockUsers";
 import { GoalStatus } from "@/types/goal.types";
 import { UserRole } from "@/types/user.types";
 import { formatDate } from "@/utils/date.util";

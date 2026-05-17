@@ -52,6 +52,22 @@ export function useUpdateCycleConfig() {
   });
 }
 
+export function useCreateCycleConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Parameters<typeof adminService.createCycleConfig>[0]) =>
+      adminService.createCycleConfig(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cycle-configs"] });
+      toast.success("Cycle created");
+    },
+    onError: (e: unknown) => {
+      const msg = e instanceof Error ? e.message : "Failed to create cycle";
+      toast.error(msg);
+    },
+  });
+}
+
 export function useActivateCycleWindow() {
   const qc = useQueryClient();
   return useMutation({
@@ -81,6 +97,26 @@ export function useUnlockGoal() {
       toast.success("Goal unlocked — status set to Approved");
     },
     onError: () => toast.error("Failed to unlock goal"),
+  });
+}
+
+export function useUnlockSheet() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sheetId, reason }: { sheetId: string; reason: string }) =>
+      adminService.unlockSheet(sheetId, reason),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["all-goals"] });
+      qc.invalidateQueries({ queryKey: ["admin-all-sheets"] });
+      qc.invalidateQueries({ queryKey: ["team-goals"] });
+      qc.invalidateQueries({ queryKey: ["team-sheets"] });
+      qc.invalidateQueries({ queryKey: ["pending-approvals"] });
+      qc.invalidateQueries({ queryKey: ["sheet-review"] });
+    },
+    onError: (e: unknown) => {
+      const msg = e instanceof Error ? e.message : "Failed to unlock goal sheet";
+      toast.error(msg);
+    },
   });
 }
 

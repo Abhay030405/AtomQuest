@@ -5,7 +5,6 @@ export const ROUTES = {
     ROOT: (userId: string) => `/employee/${userId}`,
     GOALS: (userId: string) => `/employee/${userId}/goals`,
     GOAL_DETAIL: (userId: string, id: string) => `/employee/${userId}/goals/${id}`,
-    NEW_SHEET: (userId: string) => `/employee/${userId}/goals/new`,
     QUARTERLY_UPDATE: (userId: string) => `/employee/${userId}/quarterly-update`,
     PROFILE: (userId: string) => `/employee/${userId}/profile`,
   },
@@ -23,6 +22,7 @@ export const ROUTES = {
 
   ADMIN: {
     ROOT: (userId: string) => `/admin/${userId}`,
+    PERSONNEL: (userId: string) => `/admin/${userId}/personnel`,
     USERS: (userId: string) => `/admin/${userId}/users`,
     USER_DETAIL: (userId: string, id: string) => `/admin/${userId}/users/${id}`,
     CYCLES: (userId: string) => `/admin/${userId}/cycles`,
@@ -40,7 +40,6 @@ export const ROUTE_PATTERNS = {
     ROOT: "/employee/:userId",
     GOALS: "/employee/:userId/goals",
     GOAL_DETAIL: "/employee/:userId/goals/:goalId",
-    NEW_SHEET: "/employee/:userId/goals/new",
     QUARTERLY_UPDATE: "/employee/:userId/quarterly-update",
     PROFILE: "/employee/:userId/profile",
   },
@@ -55,6 +54,7 @@ export const ROUTE_PATTERNS = {
   },
   ADMIN: {
     ROOT: "/admin/:userId",
+    PERSONNEL: "/admin/:userId/personnel",
     USERS: "/admin/:userId/users",
     USER_DETAIL: "/admin/:userId/users/:targetUserId",
     CYCLES: "/admin/:userId/cycles",
@@ -79,6 +79,7 @@ export const PAGE_TITLES: Record<string, string> = {
   "/manager/checkin": "Check-in Module",
   "/manager/reports": "Reports",
   "/admin": "Dashboard",
+  "/admin/personnel": "View Personnel",
   "/admin/cycles": "Cycle Configuration",
   "/admin/shared-goals": "Shared Goals",
   "/admin/goal-unlock": "Goal Unlock",

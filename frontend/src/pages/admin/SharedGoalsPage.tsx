@@ -93,7 +93,7 @@ function StepIndicator({ step }: { step: 1 | 2 | 3 }) {
 
 function Step1({ onNext }: { onNext: (data: KpiFormData) => void }) {
   const form = useForm<KpiFormData>({
-    resolver: zodResolver(kpiSchema),
+    resolver: zodResolver(kpiSchema) as any,
     defaultValues: {
       title: "",
       description: "",

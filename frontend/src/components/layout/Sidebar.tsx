@@ -31,6 +31,7 @@ const NAV_SECTIONS: NavSection[] = [
     initials: "AC",
     items: (userId) => [
       { label: "Dashboard", to: ROUTES.ADMIN.ROOT(userId), icon: "dashboard" },
+      { label: "View Personnel", to: ROUTES.ADMIN.PERSONNEL(userId), icon: "groups" },
       { label: "Cycle Config", to: ROUTES.ADMIN.CYCLES(userId), icon: "track_changes" },
       { label: "Shared Goals", to: ROUTES.ADMIN.SHARED_GOALS(userId), icon: "domain" },
       { label: "Audit Trail", to: ROUTES.ADMIN.AUDIT(userId), icon: "history" },

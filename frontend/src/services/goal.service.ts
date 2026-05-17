@@ -124,6 +124,7 @@ function mapApiGoal(g: ApiGoal): Goal {
     status: fromApiStatus(g.status),
     isShared: g.is_shared,
     sourceSharedGoalId: g.source_shared_goal_id ?? undefined,
+    goalSheetId: g.goal_sheet_id ?? undefined,
     version: g.version,
     lockedAt: g.locked_at ?? undefined,
     lockedBy: g.locked_by ?? undefined,
@@ -142,6 +143,9 @@ function mapApiSheet(s: ApiGoalSheet): GoalSheet {
     totalWeightage: Number(s.total_weightage),
     submittedAt: s.submitted_at ?? undefined,
     approvedAt: s.approved_at ?? undefined,
+    employeeName: (s as { owner_name?: string | null }).owner_name ?? undefined,
+    cycleName: (s as { cycle_name?: string | null }).cycle_name ?? undefined,
+    returnedCount: (s as { returned_count?: number }).returned_count,
   };
 }
 
@@ -263,16 +267,26 @@ export const goalService = {
     return { id };
   },
 
-  submitSheet: async (userId: string, cycleId: string): Promise<GoalSheet> => {
+  submitSheet: async (userId: string, cycleId: string, goalIds?: string[]): Promise<GoalSheet> => {
     // Backend submit-sheet requires the sheet UUID. Resolve it from my-sheet.
     const sheet = await goalService.getMySheet(userId, cycleId);
     if (!sheet) throw new Error("Goal sheet not found");
+    const body: { sheet_id: string; goal_ids?: string[] } = { sheet_id: sheet.id };
+    if (goalIds && goalIds.length > 0) body.goal_ids = goalIds;
     const resp = await apiClient.post<APIResponse<ApiSheetSubmitResponse>>(
       "/v1/goals/submit-sheet",
-      { sheet_id: sheet.id }
+      body
     );
     const data = unwrap(resp, "Failed to submit sheet");
     return mapApiSheet(data.sheet);
+  },
+
+  submitGoal: async (goalId: string): Promise<Goal> => {
+    const resp = await apiClient.post<APIResponse<ApiGoal>>(
+      `/v1/goals/${goalId}/submit`,
+      {}
+    );
+    return mapApiGoal(unwrap(resp, "Failed to submit goal"));
   },
 
   getGoalVersions: async (goalId: string): Promise<GoalVersion[]> => {
@@ -301,5 +315,14 @@ export const goalService = {
     );
     const data = unwrap(resp, "Failed to load goals");
     return data.items.map(mapApiGoal);
+  },
+
+  getAllSheets: async (cycleId?: string): Promise<{ items: GoalSheet[] }> => {
+    if (!cycleId) return { items: [] };
+    const resp = await apiClient.get<APIResponse<ApiPaginatedSheets>>(
+      `/v1/goals/team?cycle_id=${encodeURIComponent(cycleId)}&page_size=200`
+    );
+    const data = unwrap(resp, "Failed to load sheets");
+    return { items: data.items.map(mapApiSheet) };
   },
 };

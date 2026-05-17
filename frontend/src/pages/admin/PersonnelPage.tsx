@@ -1,16 +1,16 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { toast } from "sonner";
-import { useTeamGoals } from "@/hooks/useGoals";
+import { useAllGoals } from "@/hooks/useGoals";
 import {
-  useDirectReports,
-  useTeamSheets,
+  useAllUsers,
   useApproveSheet,
   useReturnForRework,
   useInlineEditGoal,
 } from "@/hooks/useApprovals";
+import { useUnlockSheet } from "@/hooks/useAdmin";
 import { useCycleStore } from "@/store/cycleStore";
 import { GoalStatus } from "@/types/goal.types";
-import type { Goal, GoalSheet, UoMType } from "@/types/goal.types";
+import type { Goal, UoMType } from "@/types/goal.types";
 import { UOM_TYPE_META } from "@/constants/uomTypes";
 import { formatThrustArea } from "@/utils/format.util";
 import { cn } from "@/lib/utils";
@@ -31,8 +31,8 @@ interface ColumnDef {
 }
 
 const COLUMNS: ColumnDef[] = [
-  { id: "draft",     title: "Draft Goals",     dot: "bg-on-surface-variant", emptyMsg: "No drafts from your team" },
-  { id: "submitted", title: "Pending Review",  dot: "bg-blue-500",            emptyMsg: "Nothing awaiting your review" },
+  { id: "draft",     title: "Draft Goals",     dot: "bg-on-surface-variant", emptyMsg: "No drafts" },
+  { id: "submitted", title: "Pending Review",  dot: "bg-blue-500",            emptyMsg: "Nothing awaiting review" },
   { id: "approved",  title: "Approved Goals",  dot: "bg-emerald-500",         emptyMsg: "No approved goals yet" },
   { id: "rejected",  title: "Rejected Goals",  dot: "bg-rose-500",            emptyMsg: "No rejections" },
 ];
@@ -77,12 +77,29 @@ function formatTarget(g: any): string {
   return g.targetValue != null ? String(g.targetValue) : "—";
 }
 
-interface UserInfo { fullName: string; departmentName?: string }
+// A goal sheet reconstructed from the org-wide goals feed — carries just the
+// fields the approve / return / inline-edit dispatch needs.
+interface SheetLite {
+  id: string;
+  userId: string;
+  goals: Goal[];
+}
 
-interface TeamGoalCardProps {
+interface UserInfo {
+  fullName: string;
+  departmentName?: string;
+  managerName?: string;
+  role?: string;
+}
+
+function roleLabel(role?: string): string {
+  if (!role) return "—";
+  return role.charAt(0).toUpperCase() + role.slice(1);
+}
+
+interface PersonnelGoalCardProps {
   goal: any;
   column: ColumnId;
-  user?: UserInfo;
   onView: (g: any) => void;
   onEdit?: (g: any) => void;
   onDragStart?: (g: any) => void;
@@ -90,7 +107,7 @@ interface TeamGoalCardProps {
   isDragging?: boolean;
 }
 
-function TeamGoalKanbanCard({ goal, column, onView, onEdit, onDragStart, onDragEnd, isDragging }: Readonly<TeamGoalCardProps>) {
+function PersonnelGoalKanbanCard({ goal, column, onView, onEdit, onDragStart, onDragEnd, isDragging }: Readonly<PersonnelGoalCardProps>) {
   const accent = COLUMN_ACCENT[column];
   const weightage = Math.max(0, Math.min(100, Number(goal.weightage) || 0));
   const rejectionNote = column === "rejected" ? goal.managerComment : null;
@@ -206,18 +223,20 @@ function TeamGoalKanbanCard({ goal, column, onView, onEdit, onDragStart, onDragE
   );
 }
 
-interface EmployeeOption {
+interface PickerOption {
   id: string;
   fullName: string;
-  departmentName?: string;
-  goalCount: number;
+  subtitle: string;
   pendingCount: number;
 }
 
-interface EmployeePickerProps {
-  employees: EmployeeOption[];
-  totalGoals: number;
-  totalPending: number;
+interface FilterPickerProps {
+  /** Label for the "show everything" default option, e.g. "All Managers" */
+  allLabel: string;
+  allIcon: string;
+  allSubtitle: string;
+  searchPlaceholder: string;
+  options: PickerOption[];
   value: string;
   onChange: (id: string) => void;
 }
@@ -231,13 +250,15 @@ function initialsOf(name: string): string {
     .toUpperCase();
 }
 
-function EmployeePicker({
-  employees,
-  totalGoals,
-  totalPending,
+function FilterPicker({
+  allLabel,
+  allIcon,
+  allSubtitle,
+  searchPlaceholder,
+  options,
   value,
   onChange,
-}: Readonly<EmployeePickerProps>) {
+}: Readonly<FilterPickerProps>) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -258,20 +279,20 @@ function EmployeePicker({
     };
   }, [open]);
 
-  const selected = employees.find((e) => e.id === value);
+  const selected = options.find((o) => o.id === value);
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return employees;
+    if (!search.trim()) return options;
     const q = search.toLowerCase();
-    return employees.filter(
-      (e) =>
-        e.fullName.toLowerCase().includes(q) ||
-        (e.departmentName ?? "").toLowerCase().includes(q)
+    return options.filter(
+      (o) =>
+        o.fullName.toLowerCase().includes(q) ||
+        o.subtitle.toLowerCase().includes(q)
     );
-  }, [employees, search]);
+  }, [options, search]);
 
   return (
-    <div ref={rootRef} className="relative min-w-[260px]">
+    <div ref={rootRef} className="relative min-w-[240px] flex-1 sm:max-w-[300px]">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -292,29 +313,19 @@ function EmployeePicker({
             </div>
             <div className="min-w-0 flex-1 text-left">
               <p className="text-title-md text-on-surface truncate leading-tight">{selected.fullName}</p>
-              <p className="text-label-md text-on-surface-variant truncate leading-tight">
-                {selected.departmentName ?? "—"} · {selected.goalCount} goal{selected.goalCount === 1 ? "" : "s"}
-              </p>
+              <p className="text-label-md text-on-surface-variant truncate leading-tight">{selected.subtitle}</p>
             </div>
           </>
         ) : (
           <>
             <div className="w-9 h-9 rounded-full bg-primary text-on-primary flex items-center justify-center shrink-0">
-              <span className="material-symbols-outlined text-[18px]">groups</span>
+              <span className="material-symbols-outlined text-[18px]">{allIcon}</span>
             </div>
             <div className="min-w-0 flex-1 text-left">
-              <p className="text-title-md text-on-surface truncate leading-tight">All Employees</p>
-              <p className="text-label-md text-on-surface-variant truncate leading-tight">
-                {employees.length} member{employees.length === 1 ? "" : "s"} · {totalGoals} goal{totalGoals === 1 ? "" : "s"}
-              </p>
+              <p className="text-title-md text-on-surface truncate leading-tight">{allLabel}</p>
+              <p className="text-label-md text-on-surface-variant truncate leading-tight">{allSubtitle}</p>
             </div>
           </>
-        )}
-        {totalPending > 0 && !selected && (
-          <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-[11px] font-medium">
-            <span className="material-symbols-outlined text-[12px] leading-none">hourglass_top</span>
-            {totalPending}
-          </span>
         )}
         <span className={cn(
           "material-symbols-outlined text-on-surface-variant transition-transform",
@@ -334,7 +345,7 @@ function EmployeePicker({
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search employees..."
+                placeholder={searchPlaceholder}
                 autoFocus
                 className="w-full pl-lg pr-sm py-1.5 bg-white border border-outline-variant rounded-md text-body-md text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/20 focus:outline-none"
               />
@@ -342,7 +353,7 @@ function EmployeePicker({
           </div>
 
           <ul className="max-h-72 overflow-y-auto py-1" role="listbox">
-            {/* All employees option */}
+            {/* Default "all" option */}
             <li>
               <button
                 type="button"
@@ -355,13 +366,11 @@ function EmployeePicker({
                 )}
               >
                 <div className="w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center shrink-0">
-                  <span className="material-symbols-outlined text-[16px]">groups</span>
+                  <span className="material-symbols-outlined text-[16px]">{allIcon}</span>
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-title-md text-on-surface truncate leading-tight">All Employees</p>
-                  <p className="text-label-md text-on-surface-variant truncate leading-tight">
-                    {employees.length} member{employees.length === 1 ? "" : "s"} · {totalGoals} goal{totalGoals === 1 ? "" : "s"}
-                  </p>
+                  <p className="text-title-md text-on-surface truncate leading-tight">{allLabel}</p>
+                  <p className="text-label-md text-on-surface-variant truncate leading-tight">{allSubtitle}</p>
                 </div>
                 {value === "" && (
                   <span className="material-symbols-outlined text-primary text-[18px]">check</span>
@@ -371,37 +380,35 @@ function EmployeePicker({
 
             {filtered.length === 0 && (
               <li className="px-md py-lg text-center text-body-md text-on-surface-variant">
-                No employees match "{search}"
+                No one matches "{search}"
               </li>
             )}
 
-            {filtered.map((emp) => {
-              const isSelected = emp.id === value;
+            {filtered.map((person) => {
+              const isSelected = person.id === value;
               return (
-                <li key={emp.id}>
+                <li key={person.id}>
                   <button
                     type="button"
                     role="option"
                     aria-selected={isSelected}
-                    onClick={() => { onChange(emp.id); setOpen(false); setSearch(""); }}
+                    onClick={() => { onChange(person.id); setOpen(false); setSearch(""); }}
                     className={cn(
                       "w-full flex items-center gap-sm px-sm py-2 text-left transition-colors",
                       isSelected ? "bg-primary-container/30" : "hover:bg-surface-container-low"
                     )}
                   >
                     <div className="w-8 h-8 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-label-md font-semibold shrink-0">
-                      {initialsOf(emp.fullName)}
+                      {initialsOf(person.fullName)}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-title-md text-on-surface truncate leading-tight">{emp.fullName}</p>
-                      <p className="text-label-md text-on-surface-variant truncate leading-tight">
-                        {emp.departmentName ?? "—"} · {emp.goalCount} goal{emp.goalCount === 1 ? "" : "s"}
-                      </p>
+                      <p className="text-title-md text-on-surface truncate leading-tight">{person.fullName}</p>
+                      <p className="text-label-md text-on-surface-variant truncate leading-tight">{person.subtitle}</p>
                     </div>
-                    {emp.pendingCount > 0 && (
+                    {person.pendingCount > 0 && (
                       <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-[11px] font-medium">
                         <span className="material-symbols-outlined text-[12px] leading-none">hourglass_top</span>
-                        {emp.pendingCount}
+                        {person.pendingCount}
                       </span>
                     )}
                     {isSelected && (
@@ -418,20 +425,20 @@ function EmployeePicker({
   );
 }
 
-export default function TeamGoalsPage() {
+export default function PersonnelPage() {
   const { activeWindow } = useCycleStore();
   const cycleLabel = activeWindow?.cycleName ?? "Current Cycle";
   const cycleId = activeWindow?.id ?? "";
 
-  const { data: allGoals = [], isLoading: goalsLoading } = useTeamGoals(cycleId);
-  const { data: directReports = [], isLoading: reportsLoading } = useDirectReports();
-  const { data: teamSheets = [] } = useTeamSheets(cycleId);
+  const { data: allGoals = [], isLoading: goalsLoading } = useAllGoals(cycleId);
+  const { data: allUsers = [], isLoading: usersLoading } = useAllUsers();
 
   const approveSheet = useApproveSheet();
   const returnForRework = useReturnForRework();
   const inlineEdit = useInlineEditGoal();
 
   const [nameFilter, setNameFilter] = useState("");
+  const [managerFilter, setManagerFilter] = useState("");
   const [employeeFilter, setEmployeeFilter] = useState("");
   const [viewGoal, setViewGoal] = useState<any | null>(null);
 
@@ -440,75 +447,134 @@ export default function TeamGoalsPage() {
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
 
   // Action dialog state
-  const [approveTarget, setApproveTarget] = useState<{ sheet: GoalSheet; user?: UserInfo } | null>(null);
-  const [rejectTarget, setRejectTarget] = useState<{ sheet: GoalSheet; user?: UserInfo } | null>(null);
+  const [approveTarget, setApproveTarget] = useState<{ sheet: SheetLite; user?: UserInfo } | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<{ sheet: SheetLite; user?: UserInfo } | null>(null);
   const [rejectReason, setRejectReason] = useState("");
-  const [editTarget, setEditTarget] = useState<{ goal: any; sheet: GoalSheet } | null>(null);
+  const [editTarget, setEditTarget] = useState<{ goal: any; sheet: SheetLite } | null>(null);
+  const [unlockTarget, setUnlockTarget] = useState<{ sheet: SheetLite; user?: UserInfo } | null>(null);
+  const [unlockReason, setUnlockReason] = useState("");
+  const unlockSheet = useUnlockSheet();
 
-  const isLoading = goalsLoading || reportsLoading;
-
-  // Map a goal id → its sheet (for inline edit + approve/reject dispatch)
-  const sheetByGoalId = useMemo(() => {
-    const m = new Map<string, GoalSheet>();
-    for (const s of teamSheets) {
-      for (const g of s.goals ?? []) m.set(g.id, s);
-    }
-    return m;
-  }, [teamSheets]);
+  const isLoading = goalsLoading || usersLoading;
 
   const usersById = useMemo(() => {
     const map: Record<string, UserInfo> = {};
-    for (const u of directReports as any[]) {
-      map[u.id] = { fullName: u.fullName, departmentName: u.departmentName };
-    }
-    return map;
-  }, [directReports]);
-
-  const reportIds = useMemo(() => directReports.map((u: any) => u.id), [directReports]);
-  const teamGoals = useMemo(
-    () => allGoals.filter((g: any) => reportIds.includes(g.userId)),
-    [allGoals, reportIds]
-  );
-
-  // Per-employee options for the picker (counts derived from full team goals, not filtered)
-  const employeeOptions: EmployeeOption[] = useMemo(() => {
-    const opts = (directReports as any[]).map((u) => {
-      const own = teamGoals.filter((g: any) => g.userId === u.id);
-      const pending = own.filter(
-        (g: any) => g.status === GoalStatus.SUBMITTED || g.status === GoalStatus.UNDER_REVIEW
-      ).length;
-      return {
-        id: u.id,
+    for (const u of allUsers as any[]) {
+      map[u.id] = {
         fullName: u.fullName,
         departmentName: u.departmentName,
-        goalCount: own.length,
-        pendingCount: pending,
+        managerName: u.managerName,
+        role: u.role,
       };
-    });
-    return opts.sort((a, b) => {
-      if (a.pendingCount !== b.pendingCount) return b.pendingCount - a.pendingCount;
-      return a.fullName.localeCompare(b.fullName);
-    });
-  }, [directReports, teamGoals]);
+    }
+    return map;
+  }, [allUsers]);
 
-  const pendingCount = teamGoals.filter((g: any) =>
-    g.status === GoalStatus.SUBMITTED || g.status === GoalStatus.UNDER_REVIEW
-  ).length;
+  // Reconstruct goal sheets from the org-wide goals feed (admins have no
+  // /team sheet endpoint — every goal carries its parent goalSheetId).
+  const sheetByGoalId = useMemo(() => {
+    const sheets = new Map<string, SheetLite>();
+    for (const g of allGoals as Goal[]) {
+      if (!g.goalSheetId) continue;
+      let s = sheets.get(g.goalSheetId);
+      if (!s) {
+        s = { id: g.goalSheetId, userId: g.userId, goals: [] };
+        sheets.set(g.goalSheetId, s);
+      }
+      s.goals.push(g);
+    }
+    const byGoal = new Map<string, SheetLite>();
+    for (const s of sheets.values()) {
+      for (const g of s.goals) byGoal.set(g.id, s);
+    }
+    return byGoal;
+  }, [allGoals]);
+
+  // Per-user goal counts (from the full org-wide goals feed)
+  const statsByUser = useMemo(() => {
+    const m = new Map<string, { goalCount: number; pendingCount: number }>();
+    for (const g of allGoals as Goal[]) {
+      const s = m.get(g.userId) ?? { goalCount: 0, pendingCount: 0 };
+      s.goalCount += 1;
+      if (g.status === GoalStatus.SUBMITTED || g.status === GoalStatus.UNDER_REVIEW) {
+        s.pendingCount += 1;
+      }
+      m.set(g.userId, s);
+    }
+    return m;
+  }, [allGoals]);
+
+  const selectedManagerName = managerFilter
+    ? usersById[managerFilter]?.fullName
+    : undefined;
+
+  // Dropdown 1 — managers. Subtitle aggregates each manager's direct reports.
+  const managerOptions: PickerOption[] = useMemo(() => {
+    const employees = (allUsers as any[]).filter((u) => u.role === "employee");
+    return (allUsers as any[])
+      .filter((u) => u.role === "manager")
+      .map((m) => {
+        const reports = employees.filter((e) => e.managerName === m.fullName);
+        const pending = reports.reduce(
+          (sum, r) => sum + (statsByUser.get(r.id)?.pendingCount ?? 0),
+          0
+        );
+        return {
+          id: m.id,
+          fullName: m.fullName,
+          subtitle: `${reports.length} report${reports.length === 1 ? "" : "s"} · ${pending} pending`,
+          pendingCount: pending,
+        };
+      })
+      .filter((o) => !o.subtitle.startsWith("0 report"))
+      .sort((a, b) => {
+        if (a.pendingCount !== b.pendingCount) return b.pendingCount - a.pendingCount;
+        return a.fullName.localeCompare(b.fullName);
+      });
+  }, [allUsers, statsByUser]);
+
+  // Dropdown 2 — employees, cascading off the selected manager.
+  const employeeOptions: PickerOption[] = useMemo(() => {
+    return (allUsers as any[])
+      .filter((u) => u.role === "employee")
+      .filter((u) => !selectedManagerName || u.managerName === selectedManagerName)
+      .map((u) => {
+        const stats = statsByUser.get(u.id) ?? { goalCount: 0, pendingCount: 0 };
+        return {
+          id: u.id,
+          fullName: u.fullName,
+          subtitle: `${u.managerName ? `Manager — ${u.managerName}` : "No manager"} · ${stats.goalCount} goal${stats.goalCount === 1 ? "" : "s"}`,
+          pendingCount: stats.pendingCount,
+        };
+      })
+      .sort((a, b) => {
+        if (a.pendingCount !== b.pendingCount) return b.pendingCount - a.pendingCount;
+        return a.fullName.localeCompare(b.fullName);
+      });
+  }, [allUsers, selectedManagerName, statsByUser]);
+
+  const totalGoals = (allGoals as Goal[]).length;
 
   const filtered = useMemo(() => {
-    return teamGoals.filter((goal: any) => {
+    return (allGoals as Goal[]).filter((goal) => {
       const user = usersById[goal.userId];
-      if (employeeFilter && goal.userId !== employeeFilter) return false;
+      // Employee selection wins — show just that one person.
+      if (employeeFilter) {
+        if (goal.userId !== employeeFilter) return false;
+      } else if (managerFilter) {
+        // Otherwise, a manager selection scopes to that manager's reports.
+        if (!user || user.managerName !== selectedManagerName) return false;
+      }
       if (nameFilter) {
-        const haystack = `${user?.fullName ?? ""} ${goal.title ?? ""}`.toLowerCase();
+        const haystack = `${user?.fullName ?? ""} ${user?.managerName ?? ""} ${goal.title ?? ""}`.toLowerCase();
         if (!haystack.includes(nameFilter.toLowerCase())) return false;
       }
       return true;
     });
-  }, [teamGoals, nameFilter, employeeFilter, usersById]);
+  }, [allGoals, nameFilter, employeeFilter, managerFilter, selectedManagerName, usersById]);
 
-  // Group filtered goals by employee, and within each employee by column
-  type EmpBoard = {
+  // Group filtered goals by person, and within each person by column
+  type PersonBoard = {
     userId: string;
     user?: UserInfo;
     grouped: Record<ColumnId, any[]>;
@@ -516,8 +582,8 @@ export default function TeamGoalsPage() {
     weightageSum: number;
   };
 
-  const boards: EmpBoard[] = useMemo(() => {
-    const byUser = new Map<string, EmpBoard>();
+  const boards: PersonBoard[] = useMemo(() => {
+    const byUser = new Map<string, PersonBoard>();
     for (const g of filtered) {
       const c = classifyGoal(g as Goal);
       if (!c) continue;
@@ -536,7 +602,7 @@ export default function TeamGoalsPage() {
       b.total += 1;
       b.weightageSum += Number(g.weightage) || 0;
     }
-    // Sort: employees with pending review first, then by name
+    // Sort: people with pending review first, then by name
     return Array.from(byUser.values()).sort((a, b) => {
       const ap = a.grouped.submitted.length > 0 ? 0 : 1;
       const bp = b.grouped.submitted.length > 0 ? 0 : 1;
@@ -551,19 +617,35 @@ export default function TeamGoalsPage() {
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-md border-b border-outline-variant pb-md">
         <div>
           <p className="text-label-md text-primary uppercase tracking-wider mb-1">{cycleLabel}</p>
-          <h2 className="text-display-lg text-on-surface mb-xs">Team Goals</h2>
+          <h2 className="text-display-lg text-on-surface mb-xs">View Personnel</h2>
           <p className="text-body-lg text-on-surface-variant">
-            All objectives across your direct reports, grouped by stage. Click a card to view details.
+            Every employee and manager across the organisation, grouped by stage. Click a card for details — drag a
+            pending card to approve or return it.
           </p>
         </div>
       </div>
 
-      {/* Filters */}
+      {/* Filters — two connected dropdowns: Managers → Employees */}
       <div className="flex flex-wrap items-center gap-sm">
-        <EmployeePicker
-          employees={employeeOptions}
-          totalGoals={teamGoals.length}
-          totalPending={pendingCount}
+        <FilterPicker
+          allLabel="All Managers"
+          allIcon="supervisor_account"
+          allSubtitle={`${managerOptions.length} manager${managerOptions.length === 1 ? "" : "s"}`}
+          searchPlaceholder="Search managers..."
+          options={managerOptions}
+          value={managerFilter}
+          onChange={(id) => { setManagerFilter(id); setEmployeeFilter(""); }}
+        />
+        <FilterPicker
+          allLabel="All Employees"
+          allIcon="groups"
+          allSubtitle={
+            selectedManagerName
+              ? `${employeeOptions.length} under ${selectedManagerName}`
+              : `${employeeOptions.length} employee${employeeOptions.length === 1 ? "" : "s"}`
+          }
+          searchPlaceholder="Search employees..."
+          options={employeeOptions}
           value={employeeFilter}
           onChange={setEmployeeFilter}
         />
@@ -571,15 +653,15 @@ export default function TeamGoalsPage() {
           <span className="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-outline text-[18px]">search</span>
           <input
             type="text"
-            placeholder="Search goal title..."
+            placeholder="Search goal title, person, or manager..."
             value={nameFilter}
             onChange={(e) => setNameFilter(e.target.value)}
             className="w-full pl-xl pr-sm py-sm bg-surface-container-low border border-outline-variant rounded-lg text-body-md text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/20 focus:outline-none"
           />
         </div>
-        {(nameFilter || employeeFilter) && (
+        {(nameFilter || managerFilter || employeeFilter) && (
           <button
-            onClick={() => { setNameFilter(""); setEmployeeFilter(""); }}
+            onClick={() => { setNameFilter(""); setManagerFilter(""); setEmployeeFilter(""); }}
             className="text-on-surface-variant hover:text-on-surface text-body-md flex items-center gap-xs px-sm py-sm rounded border border-outline-variant bg-surface-container-lowest hover:bg-surface-container-low transition-colors"
           >
             <span className="material-symbols-outlined text-[16px]">close</span>
@@ -587,11 +669,11 @@ export default function TeamGoalsPage() {
           </button>
         )}
         <span className="ml-auto text-label-md text-on-surface-variant">
-          Showing {filtered.length} of {teamGoals.length} goals
+          Showing {filtered.length} of {totalGoals} goals
         </span>
       </div>
 
-      {/* Per-employee Kanban boards */}
+      {/* Per-person Kanban boards */}
       {(() => {
         if (isLoading) {
           return (
@@ -614,7 +696,7 @@ export default function TeamGoalsPage() {
             <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-xl text-center">
               <span className="material-symbols-outlined text-[48px] text-on-surface-variant/40">manage_search</span>
               <p className="text-body-lg text-on-surface-variant mt-md">
-                {teamGoals.length === 0 ? "No goals found for your team" : "No goals match your filters"}
+                {(allGoals as Goal[]).length === 0 ? "No goals found across the organisation" : "No goals match your filters"}
               </p>
             </div>
           );
@@ -622,7 +704,8 @@ export default function TeamGoalsPage() {
         return (
           <div className="space-y-lg">
             {boards.map((board) => {
-              const initials = (board.user?.fullName ?? "??")
+              const fullName = board.user?.fullName ?? "Unknown";
+              const initials = fullName
                 .split(" ")
                 .map((n) => n[0])
                 .join("")
@@ -630,19 +713,27 @@ export default function TeamGoalsPage() {
                 .toUpperCase();
               const weightageRounded = Math.round(board.weightageSum * 100) / 100;
               const pendingHere = board.grouped.submitted.length;
+              const managerName = board.user?.managerName;
               return (
                 <section
                   key={board.userId}
                   className="rounded-2xl border border-outline-variant bg-surface-container-lowest shadow-sm overflow-hidden"
                 >
-                  {/* Employee header */}
+                  {/* Person header */}
                   <div className="px-md py-md border-b border-outline-variant bg-surface-container/40 flex items-center gap-md flex-wrap">
                     <div className="w-10 h-10 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-title-md font-semibold shrink-0">
                       {initials}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <h3 className="text-title-lg text-on-surface truncate">{board.user?.fullName ?? "Unknown"}</h3>
-                      <p className="text-label-md text-on-surface-variant truncate">{board.user?.departmentName ?? "—"}</p>
+                      <h3 className="text-title-lg text-on-surface truncate">
+                        {fullName}
+                        {managerName && (
+                          <span className="text-on-surface-variant font-normal"> (Manager — {managerName})</span>
+                        )}
+                      </h3>
+                      <p className="text-label-md text-on-surface-variant truncate">
+                        {roleLabel(board.user?.role)} · {board.user?.departmentName ?? "—"}
+                      </p>
                     </div>
                     <div className="flex items-center gap-xs flex-wrap">
                       <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-surface-container border border-outline-variant text-[11px] text-on-surface-variant">
@@ -666,13 +757,44 @@ export default function TeamGoalsPage() {
                           {pendingHere} pending
                         </span>
                       )}
+                      {(() => {
+                        const approvedGoal = board.grouped.approved[0];
+                        const fallbackGoal = board.grouped.submitted[0] ?? board.grouped.draft[0] ?? board.grouped.rejected[0];
+                        const anyGoal = approvedGoal ?? fallbackGoal;
+                        const sheet = anyGoal ? sheetByGoalId.get(anyGoal.id) : undefined;
+                        const canUnlock = !!sheet && board.grouped.approved.length > 0;
+                        const tooltip = canUnlock
+                          ? "Move this sheet back to draft so the employee can edit"
+                          : "No approved/locked goals to unlock yet";
+                        return (
+                          <button
+                            type="button"
+                            disabled={!canUnlock}
+                            onClick={() => {
+                              if (!canUnlock || !sheet) return;
+                              setUnlockReason("");
+                              setUnlockTarget({ sheet, user: board.user });
+                            }}
+                            className={cn(
+                              "inline-flex items-center gap-1.5 px-md py-1.5 rounded-lg text-label-md shadow-level-1 border-t border-white/20 transition-colors",
+                              canUnlock
+                                ? "bg-amber-600 text-white hover:bg-amber-700"
+                                : "bg-surface-container text-on-surface-variant border border-outline-variant opacity-60 cursor-not-allowed"
+                            )}
+                            title={tooltip}
+                          >
+                            <span className="material-symbols-outlined text-[16px] leading-none">lock_open_right</span>
+                            Unlock Goals
+                          </button>
+                        );
+                      })()}
                     </div>
                   </div>
 
-                  {/* Kanban for this employee */}
+                  {/* Kanban for this person */}
                   <div
                     className="w-full overflow-x-auto p-md"
-                    data-employee={board.userId}
+                    data-person={board.userId}
                   >
                     <div className="grid grid-cols-4 gap-3 min-w-[1000px]">
                       {COLUMNS.map((col) => {
@@ -685,7 +807,7 @@ export default function TeamGoalsPage() {
                             key={col.id}
                             onDragOver={(e) => {
                               if (!isDropTarget || draggingId == null) return;
-                              // Only allow same-employee drops
+                              // Only allow same-person drops
                               const draggedSheet = sheetByGoalId.get(draggingId);
                               if (!draggedSheet || draggedSheet.userId !== board.userId) return;
                               e.preventDefault();
@@ -730,11 +852,10 @@ export default function TeamGoalsPage() {
                                 </div>
                               ) : (
                                 items.map((goal: any) => (
-                                  <TeamGoalKanbanCard
+                                  <PersonnelGoalKanbanCard
                                     key={goal.id}
                                     goal={goal}
                                     column={col.id}
-                                    user={board.user}
                                     onView={setViewGoal}
                                     onEdit={(g) => {
                                       const sheet = sheetByGoalId.get(g.id);
@@ -759,7 +880,7 @@ export default function TeamGoalsPage() {
         );
       })()}
 
-      {/* Goal detail sheet — redesigned */}
+      {/* Goal detail sheet */}
       <Sheet open={viewGoal !== null} onOpenChange={(open) => !open && setViewGoal(null)}>
         <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto p-0 bg-surface">
           {viewGoal && (() => {
@@ -805,8 +926,15 @@ export default function TeamGoalsPage() {
                       {ownerInitials}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-title-sm text-on-surface truncate leading-tight">{owner?.fullName ?? "Unknown"}</p>
-                      <p className="text-label-md text-on-surface-variant truncate leading-tight">{owner?.departmentName ?? "—"}</p>
+                      <p className="text-title-sm text-on-surface truncate leading-tight">
+                        {owner?.fullName ?? "Unknown"}
+                        {owner?.managerName && (
+                          <span className="text-on-surface-variant font-normal"> (Manager — {owner.managerName})</span>
+                        )}
+                      </p>
+                      <p className="text-label-md text-on-surface-variant truncate leading-tight">
+                        {roleLabel(owner?.role)} · {owner?.departmentName ?? "—"}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -912,7 +1040,7 @@ export default function TeamGoalsPage() {
         <ConfirmDialog
           tone="success"
           icon="check_circle"
-          title={`Approve ${approveTarget.user?.fullName ?? "this employee"}'s goal sheet?`}
+          title={`Approve ${approveTarget.user?.fullName ?? "this person"}'s goal sheet?`}
           message={`This will approve all ${approveTarget.sheet.goals?.length ?? 0} goal(s) on the sheet. The employee will be notified.`}
           confirmLabel="Approve sheet"
           loading={approveSheet.isPending}
@@ -932,7 +1060,7 @@ export default function TeamGoalsPage() {
       {/* Reject feedback dialog */}
       {rejectTarget && (
         <RejectDialog
-          employeeName={rejectTarget.user?.fullName ?? "this employee"}
+          employeeName={rejectTarget.user?.fullName ?? "this person"}
           goalCount={rejectTarget.sheet.goals?.length ?? 0}
           reason={rejectReason}
           onReasonChange={setRejectReason}
@@ -940,8 +1068,8 @@ export default function TeamGoalsPage() {
           onCancel={() => { setRejectTarget(null); setRejectReason(""); }}
           onSubmit={() => {
             const trimmed = rejectReason.trim();
-            if (trimmed.length < 10) {
-              toast.error("Feedback must be at least 10 characters");
+            if (trimmed.length < 20) {
+              toast.error("Feedback must be at least 20 characters");
               return;
             }
             returnForRework.mutate(
@@ -951,6 +1079,35 @@ export default function TeamGoalsPage() {
                   toast.success(`Returned to ${rejectTarget.user?.fullName ?? "employee"} for rework`);
                   setRejectTarget(null);
                   setRejectReason("");
+                },
+              }
+            );
+          }}
+        />
+      )}
+
+      {/* Unlock goal sheet dialog (admin exception flow) */}
+      {unlockTarget && (
+        <UnlockSheetDialog
+          employeeName={unlockTarget.user?.fullName ?? "this person"}
+          goalCount={unlockTarget.sheet.goals?.length ?? 0}
+          reason={unlockReason}
+          onReasonChange={setUnlockReason}
+          loading={unlockSheet.isPending}
+          onCancel={() => { setUnlockTarget(null); setUnlockReason(""); }}
+          onSubmit={() => {
+            const trimmed = unlockReason.trim();
+            if (trimmed.length < 20) {
+              toast.error("Reason must be at least 20 characters");
+              return;
+            }
+            unlockSheet.mutate(
+              { sheetId: unlockTarget.sheet.id, reason: trimmed },
+              {
+                onSuccess: () => {
+                  toast.success(`Unlocked ${unlockTarget.user?.fullName ?? "employee"}'s goal sheet — moved back to draft`);
+                  setUnlockTarget(null);
+                  setUnlockReason("");
                 },
               }
             );
@@ -982,6 +1139,7 @@ export default function TeamGoalsPage() {
     </div>
   );
 }
+
 // ─── Dialog components ────────────────────────────────────────────────────────
 
 interface ConfirmDialogProps {
@@ -1059,7 +1217,7 @@ interface RejectDialogProps {
 
 function RejectDialog({ employeeName, goalCount, reason, onReasonChange, loading, onCancel, onSubmit }: Readonly<RejectDialogProps>) {
   const trimmed = reason.trim();
-  const valid = trimmed.length >= 10;
+  const valid = trimmed.length >= 20;
   return (
     <button
       type='button'
@@ -1093,13 +1251,13 @@ function RejectDialog({ employeeName, goalCount, reason, onReasonChange, loading
             value={reason}
             onChange={(e) => onReasonChange(e.target.value)}
             rows={4}
-            placeholder='Explain what needs to change (minimum 10 characters)...'
+            placeholder='Explain what needs to change (minimum 20 characters)...'
             className='w-full px-3 py-2 rounded-lg bg-surface-container-lowest border border-outline-variant text-body-md text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/20 focus:outline-none resize-none'
             autoFocus
           />
           <div className='flex justify-between mt-1'>
             <p className='text-label-sm text-on-surface-variant'>
-              {trimmed.length === 0 ? 'Required' : valid ? '✓ Looks good' : `${10 - trimmed.length} more character(s)`}
+              {trimmed.length === 0 ? 'Required' : valid ? '✓ Looks good' : `${20 - trimmed.length} more character(s)`}
             </p>
             <p className='text-label-sm text-on-surface-variant tabular-nums'>{reason.length}</p>
           </div>
@@ -1121,6 +1279,87 @@ function RejectDialog({ employeeName, goalCount, reason, onReasonChange, loading
           >
             {loading && <span className='material-symbols-outlined animate-spin text-[16px]'>progress_activity</span>}
             Return for rework
+          </button>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+interface UnlockSheetDialogProps {
+  employeeName: string;
+  goalCount: number;
+  reason: string;
+  onReasonChange: (v: string) => void;
+  loading?: boolean;
+  onCancel: () => void;
+  onSubmit: () => void;
+}
+
+function UnlockSheetDialog({ employeeName, goalCount, reason, onReasonChange, loading, onCancel, onSubmit }: Readonly<UnlockSheetDialogProps>) {
+  const trimmed = reason.trim();
+  const valid = trimmed.length >= 20;
+  return (
+    <button
+      type='button'
+      onClick={onCancel}
+      aria-label='Close dialog'
+      className='fixed inset-0 z-50 bg-scrim/40 backdrop-blur-sm flex items-center justify-center p-md animate-in fade-in'
+    >
+      <div
+        role='dialog'
+        aria-modal='true'
+        onClick={(e) => e.stopPropagation()}
+        className='w-full max-w-lg bg-surface-container-lowest rounded-2xl border border-outline-variant shadow-level-3 overflow-hidden animate-in zoom-in-95'
+      >
+        <div className='px-lg pt-lg pb-md flex items-start gap-md'>
+          <span className='inline-flex items-center justify-center w-11 h-11 rounded-full shrink-0 bg-amber-100 text-amber-700'>
+            <span className='material-symbols-outlined text-[24px]'>lock_open_right</span>
+          </span>
+          <div className='min-w-0 flex-1'>
+            <h3 className='text-title-lg text-on-surface mb-1'>Unlock goal sheet</h3>
+            <p className='text-body-md text-on-surface-variant leading-relaxed'>
+              This will move {employeeName}&apos;s {goalCount} goal(s) back to <strong>Draft</strong> so they can edit and resubmit. The action is logged with your reason.
+            </p>
+          </div>
+        </div>
+        <div className='px-lg pb-md'>
+          <label htmlFor='unlock-reason' className='text-label-md text-on-surface-variant mb-1 block uppercase tracking-wider'>
+            Reason for unlock <span className='text-amber-700'>*</span>
+          </label>
+          <textarea
+            id='unlock-reason'
+            value={reason}
+            onChange={(e) => onReasonChange(e.target.value)}
+            rows={4}
+            placeholder='Explain why this sheet is being unlocked (minimum 20 characters)...'
+            className='w-full px-3 py-2 rounded-lg bg-surface-container-lowest border border-outline-variant text-body-md text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/20 focus:outline-none resize-none'
+            autoFocus
+          />
+          <div className='flex justify-between mt-1'>
+            <p className='text-label-sm text-on-surface-variant'>
+              {trimmed.length === 0 ? 'Required' : valid ? '✓ Looks good' : `${20 - trimmed.length} more character(s)`}
+            </p>
+            <p className='text-label-sm text-on-surface-variant tabular-nums'>{reason.length}</p>
+          </div>
+        </div>
+        <div className='px-lg py-md bg-surface-container/40 flex justify-end gap-sm'>
+          <button
+            type='button'
+            onClick={onCancel}
+            disabled={loading}
+            className='px-md py-2 rounded-lg text-title-sm text-on-surface hover:bg-surface-container-low disabled:opacity-50'
+          >
+            Cancel
+          </button>
+          <button
+            type='button'
+            onClick={onSubmit}
+            disabled={loading || !valid}
+            className='px-md py-2 rounded-lg text-title-sm text-white shadow-level-1 border-t border-white/20 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 inline-flex items-center gap-1.5'
+          >
+            {loading && <span className='material-symbols-outlined animate-spin text-[16px]'>progress_activity</span>}
+            Unlock goals
           </button>
         </div>
       </div>

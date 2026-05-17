@@ -1,14 +1,12 @@
 import { useState } from "react";
-import { useAuthStore } from "@/store/authStore";
 import { useTeamSheets, useApproveSheet, useReturnForRework } from "@/hooks/useApprovals";
 import { useCycleStore } from "@/store/cycleStore";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 export default function ApprovalQueuePage() {
-  const { currentUser } = useAuthStore();
-  const { activeConfig } = useCycleStore();
-  const { data: teamSheets = [], isLoading } = useTeamSheets(activeConfig?.id ?? "");
+  const { activeWindow } = useCycleStore();
+  const { data: teamSheets = [], isLoading } = useTeamSheets(activeWindow?.id ?? "");
   const approveSheet = useApproveSheet();
   const returnForRework = useReturnForRework();
 
@@ -27,7 +25,7 @@ export default function ApprovalQueuePage() {
   async function handleApprove() {
     if (!selected) return;
     try {
-      await approveSheet.mutateAsync({ sheetId: selected.id });
+      await approveSheet.mutateAsync(selected.id);
       toast.success("Goal sheet approved");
       setSelectedId(null);
     } catch {
@@ -38,7 +36,7 @@ export default function ApprovalQueuePage() {
   async function handleRework() {
     if (!selected || !reworkComment.trim()) return;
     try {
-      await returnForRework.mutateAsync({ sheetId: selected.id, comment: reworkComment });
+      await returnForRework.mutateAsync({ sheetId: selected.id, reason: reworkComment });
       toast.success("Returned for rework");
       setReworkComment("");
       setSelectedId(null);
@@ -117,11 +115,11 @@ export default function ApprovalQueuePage() {
             <div className="flex justify-between items-start mb-md">
               <div className="flex items-center gap-md">
                 <div className="w-14 h-14 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-headline-md font-bold shrink-0 border border-outline-variant">
-                  {initials(selected.employeeName ?? "")}
+                  {initials((selected as any).employeeName ?? "")}
                 </div>
                 <div>
-                  <h2 className="text-headline-md text-on-surface">{selected.employeeName}'s Goals</h2>
-                  <p className="text-body-md text-on-surface-variant">{selected.employeeRole ?? "—"}</p>
+                  <h2 className="text-headline-md text-on-surface">{(selected as any).employeeName}'s Goals</h2>
+                  <p className="text-body-md text-on-surface-variant">{(selected as any).employeeRole ?? "—"}</p>
                 </div>
               </div>
               {/* Weightage indicator */}

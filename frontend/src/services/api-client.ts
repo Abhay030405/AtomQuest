@@ -30,10 +30,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     // No token at all — log it and let backend respond 401
     console.warn(`[apiClient] No auth token for ${path}`);
   }
-  const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { "Content-Type": "application/json", ...authHeader, ...init?.headers },
     ...init,
+    headers: { ...headers, ...(init?.headers as Record<string, string> | undefined) },
   });
 
   const contentType = res.headers.get("content-type") ?? "";

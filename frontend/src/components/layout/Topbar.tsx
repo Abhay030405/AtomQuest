@@ -119,7 +119,7 @@ export function Topbar({ onMobileMenuClick }: TopbarProps) {
 
   return (
     <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between border-b border-outline-variant bg-surface-container-lowest px-lg shadow-level-1">
-      {/* Left: mobile menu + search */}
+      {/* Left: mobile menu */}
       <div className="flex items-center gap-md flex-1">
         <button
           className="md:hidden text-on-surface-variant hover:bg-surface-container-low p-sm rounded-full transition-colors"
@@ -127,15 +127,6 @@ export function Topbar({ onMobileMenuClick }: TopbarProps) {
         >
           <span className="material-symbols-outlined">menu</span>
         </button>
-        {/* Search bar — desktop only */}
-        <div className="relative hidden md:flex items-center w-64">
-          <span className="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">search</span>
-          <input
-            type="text"
-            placeholder="Search..."
-            className="w-full pl-9 pr-md py-1.5 bg-surface-container-low border border-outline-variant rounded-full text-body-md text-on-surface placeholder:text-on-surface-variant focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all"
-          />
-        </div>
       </div>
 
       {/* Right: notifications + user */}
