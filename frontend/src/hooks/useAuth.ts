@@ -10,7 +10,6 @@ export function useAuth() {
   const login = useAuthStore((s) => s.login);
   const logout = useAuthStore((s) => s.logout);
   const hasPermission = useAuthStore((s) => s.hasPermission);
-  const switchRole = useAuthStore((s) => s.switchRole);
 
   const isEmployee = currentUser?.role === UserRole.EMPLOYEE;
   const isManager = currentUser?.role === UserRole.MANAGER;
@@ -25,7 +24,6 @@ export function useAuth() {
     login,
     logout,
     hasPermission,
-    switchRole,
     isEmployee,
     isManager,
     isAdmin,

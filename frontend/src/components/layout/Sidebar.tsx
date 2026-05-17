@@ -1,113 +1,68 @@
 import { NavLink, useNavigate } from "react-router-dom";
-import {
-  LayoutDashboard,
-  Target,
-  CalendarCheck,
-  ClipboardCheck,
-  Users,
-  CheckSquare,
-  Settings2,
-  Share2,
-  FileSearch,
-  BarChart3,
-  LockOpen,
-  LogOut,
-  X,
-} from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { Permission } from "@/types/user.types";
 import { ROUTES } from "@/constants/routes";
-import { getRoleDisplayName, getRoleColor } from "@/utils/permission.util";
+import { getRoleDisplayName } from "@/utils/permission.util";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import type { LucideIcon } from "lucide-react";
 
 // ─── Nav item shape ────────────────────────────────────────────────────────────
 
 interface NavItem {
   label: string;
   to: string;
-  icon: LucideIcon;
-  comingSoon?: string;
+  icon: string;
 }
 
 interface NavSection {
-  /** Must hold this permission to see this entire section */
   anchor: Permission;
-  items: NavItem[];
+  label: string;
+  subtitle: string;
+  initials: string;
+  items: (userId: string) => NavItem[];
 }
 
-// ─── Nav sections — checked in priority order ─────────────────────────────────
-// Admin: has CONFIGURE_CYCLE (exclusive to admin)
-// Manager: has APPROVE_GOAL but not CONFIGURE_CYCLE
-// Employee: has SUBMIT_GOAL_SHEET (exclusive to employees)
+// ─── Nav sections ──────────────────────────────────────────────────────────────
 
 const NAV_SECTIONS: NavSection[] = [
   {
     anchor: Permission.CONFIGURE_CYCLE,
-    items: [
-      { label: "Dashboard", to: ROUTES.ADMIN.ROOT, icon: LayoutDashboard },
-      { label: "Cycle Config", to: ROUTES.ADMIN.CYCLES, icon: Settings2 },
-      { label: "Shared Goals", to: ROUTES.ADMIN.SHARED_GOALS, icon: Share2 },
-      { label: "Audit Trail", to: ROUTES.ADMIN.AUDIT, icon: FileSearch },
-      { label: "Reports", to: ROUTES.ADMIN.REPORTS, icon: BarChart3 },
-      { label: "Goal Unlock", to: ROUTES.ADMIN.GOAL_UNLOCK, icon: LockOpen },
+    label: "Admin Console",
+    subtitle: "Global Operations",
+    initials: "AC",
+    items: (userId) => [
+      { label: "Dashboard", to: ROUTES.ADMIN.ROOT(userId), icon: "dashboard" },
+      { label: "View Personnel", to: ROUTES.ADMIN.PERSONNEL(userId), icon: "groups" },
+      { label: "Cycle Config", to: ROUTES.ADMIN.CYCLES(userId), icon: "track_changes" },
+      { label: "Shared Goals", to: ROUTES.ADMIN.SHARED_GOALS(userId), icon: "domain" },
+      { label: "Audit Trail", to: ROUTES.ADMIN.AUDIT(userId), icon: "history" },
+      { label: "Reports", to: ROUTES.ADMIN.REPORTS(userId), icon: "analytics" },
+      { label: "Goal Unlock", to: ROUTES.ADMIN.GOAL_UNLOCK(userId), icon: "lock_open_right" },
     ],
   },
   {
     anchor: Permission.APPROVE_GOAL,
-    items: [
-      { label: "Dashboard", to: ROUTES.MANAGER.ROOT, icon: LayoutDashboard },
-      { label: "Approval Queue", to: ROUTES.MANAGER.REVIEW, icon: ClipboardCheck },
-      { label: "Team Goals", to: ROUTES.MANAGER.TEAM_GOALS, icon: Users },
-      { label: "Check-in Module", to: ROUTES.MANAGER.CHECKIN, icon: CheckSquare },
+    label: "Manager Portal",
+    subtitle: "Enterprise Performance",
+    initials: "MP",
+    items: (userId) => [
+      { label: "Dashboard", to: ROUTES.MANAGER.ROOT(userId), icon: "dashboard" },
+      { label: "Approval Queue", to: ROUTES.MANAGER.REVIEW(userId), icon: "fact_check" },
+      { label: "Team Goals", to: ROUTES.MANAGER.TEAM_GOALS(userId), icon: "track_changes" },
+      { label: "Check-in Module", to: ROUTES.MANAGER.CHECKIN(userId), icon: "event_note" },
     ],
   },
   {
     anchor: Permission.SUBMIT_GOAL_SHEET,
-    items: [
-      { label: "Dashboard", to: ROUTES.EMPLOYEE.ROOT, icon: LayoutDashboard },
-      { label: "My Goals", to: ROUTES.EMPLOYEE.GOALS, icon: Target },
-      { label: "Quarterly Update", to: ROUTES.EMPLOYEE.QUARTERLY_UPDATE, icon: CalendarCheck },
+    label: "AtomQuest",
+    subtitle: "Performance Hub",
+    initials: "AQ",
+    items: (userId) => [
+      { label: "Dashboard", to: ROUTES.EMPLOYEE.ROOT(userId), icon: "dashboard" },
+      { label: "My Goals", to: ROUTES.EMPLOYEE.GOALS(userId), icon: "target" },
+      { label: "Quarterly Update", to: ROUTES.EMPLOYEE.QUARTERLY_UPDATE(userId), icon: "task_alt" },
     ],
   },
 ];
-
-// ─── Nav item renderer ─────────────────────────────────────────────────────────
-
-function SidebarNavItem({ item }: { item: NavItem }) {
-  if (item.comingSoon) {
-    return (
-      <div className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground/50 cursor-not-allowed select-none">
-        <item.icon className="h-4 w-4 shrink-0" />
-        <span className="flex-1">{item.label}</span>
-        <span className="rounded text-[10px] font-medium bg-muted px-1.5 py-0.5 text-muted-foreground/60">
-          {item.comingSoon}
-        </span>
-      </div>
-    );
-  }
-
-  return (
-    <NavLink
-      to={item.to}
-      end={item.to.split("/").length <= 2}
-      className={({ isActive }) =>
-        cn(
-          "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-          isActive
-            ? "border-l-2 border-indigo-600 bg-indigo-50 text-indigo-700 pl-[10px]"
-            : "text-muted-foreground hover:bg-muted hover:text-foreground"
-        )
-      }
-    >
-      <item.icon className="h-4 w-4 shrink-0" />
-      <span>{item.label}</span>
-    </NavLink>
-  );
-}
 
 // ─── Sidebar content ───────────────────────────────────────────────────────────
 
@@ -119,9 +74,8 @@ function SidebarContent({ onClose }: SidebarContentProps) {
   const navigate = useNavigate();
   const { currentUser, logout, hasPermission } = useAuthStore();
 
-  // Pick the first section whose anchor permission the user holds
   const activeSection = NAV_SECTIONS.find((s) => hasPermission(s.anchor));
-  const navItems = activeSection?.items ?? [];
+  const navItems = currentUser?.id ? activeSection?.items(currentUser.id) ?? [] : [];
 
   const handleLogout = () => {
     logout();
@@ -129,64 +83,75 @@ function SidebarContent({ onClose }: SidebarContentProps) {
   };
 
   return (
-    <div className="flex h-full flex-col bg-card border-r">
-      {/* Logo */}
-      <div className="flex h-16 items-center justify-between px-5 border-b shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-indigo-600">
-            <Target className="h-4 w-4 text-white" />
+    <div className="flex h-full flex-col bg-surface-container-lowest border-r border-outline-variant">
+      {/* Brand header */}
+      <div className="flex items-center justify-between px-lg py-lg border-b border-outline-variant shrink-0">
+        <div className="flex items-center gap-md">
+          <div className="w-10 h-10 rounded-lg bg-primary-container flex items-center justify-center text-on-primary-container font-bold text-sm shrink-0">
+            {activeSection?.initials ?? "AQ"}
           </div>
-          <div className="flex flex-col leading-none">
-            <span className="text-sm font-bold text-indigo-700">AtomQuest</span>
-            <span className="text-[10px] font-medium text-muted-foreground tracking-wider uppercase">
-              Portal
-            </span>
+          <div>
+            <h1 className="text-title-md font-bold text-primary leading-tight">{activeSection?.label ?? "AtomQuest"}</h1>
+            <p className="text-label-md text-on-surface-variant">{activeSection?.subtitle ?? "Performance Hub"}</p>
           </div>
         </div>
         {onClose && (
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
+          <button
+            onClick={onClose}
+            className="text-on-surface-variant hover:bg-surface-container-low p-1 rounded-full transition-colors"
+          >
+            <span className="material-symbols-outlined text-[20px]">close</span>
+          </button>
         )}
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
+      <nav className="flex-1 overflow-y-auto px-md py-md flex flex-col gap-xs">
         {navItems.map((item) => (
-          <SidebarNavItem key={item.to + item.label} item={item} />
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.to.split("/").length <= 3}
+            className={({ isActive }) =>
+              cn(
+                "flex items-center gap-md px-md py-sm rounded-lg text-label-md font-medium transition-all duration-200 cursor-pointer active:scale-95",
+                isActive
+                  ? "bg-secondary-container text-on-secondary-container font-bold"
+                  : "text-on-surface-variant hover:bg-surface-container-low"
+              )
+            }
+          >
+            {({ isActive }) => (
+              <>
+                <span className={cn("material-symbols-outlined text-[20px]", isActive ? "fill" : "")}>
+                  {item.icon}
+                </span>
+                <span>{item.label}</span>
+              </>
+            )}
+          </NavLink>
         ))}
       </nav>
 
-      {/* User card */}
+      {/* User + logout */}
       {currentUser && (
-        <div className="border-t px-4 py-4 shrink-0">
-          <div className="flex items-center gap-3 mb-3">
-            <Avatar className="h-9 w-9 shrink-0">
-              <AvatarFallback className="bg-indigo-100 text-indigo-700 text-xs font-semibold">
-                {currentUser.avatarInitials}
-              </AvatarFallback>
-            </Avatar>
+        <div className="border-t border-outline-variant px-md py-md shrink-0 flex flex-col gap-sm">
+          <div className="flex items-center gap-md px-md py-sm">
+            <div className="w-8 h-8 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-label-md font-bold shrink-0">
+              {currentUser.avatarInitials}
+            </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold truncate text-foreground">
-                {currentUser.fullName}
-              </p>
-              <Badge
-                variant="secondary"
-                className={cn("text-[10px] px-1.5 py-0 mt-0.5", getRoleColor(currentUser.role))}
-              >
-                {getRoleDisplayName(currentUser.role)}
-              </Badge>
+              <p className="text-body-md font-semibold text-on-surface truncate">{currentUser.fullName}</p>
+              <p className="text-label-md text-on-surface-variant">{getRoleDisplayName(currentUser.role)}</p>
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground"
+          <button
             onClick={handleLogout}
+            className="flex items-center gap-md px-md py-sm rounded-lg text-label-md text-on-surface-variant hover:bg-surface-container-low transition-colors"
           >
-            <LogOut className="h-3.5 w-3.5" />
-            Sign Out
-          </Button>
+            <span className="material-symbols-outlined text-[20px]">logout</span>
+            <span>Sign Out</span>
+          </button>
         </div>
       )}
     </div>
@@ -197,7 +162,7 @@ function SidebarContent({ onClose }: SidebarContentProps) {
 
 export function Sidebar() {
   return (
-    <aside className="hidden md:flex w-[260px] shrink-0 flex-col h-screen sticky top-0">
+    <aside className="hidden md:flex w-64 shrink-0 flex-col h-screen sticky top-0 z-40">
       <SidebarContent />
     </aside>
   );
@@ -215,14 +180,12 @@ export function MobileSidebar({ open, onClose }: MobileSidebarProps) {
 
   return (
     <>
-      {/* Backdrop */}
       <div
         className="fixed inset-0 z-40 bg-black/40 md:hidden"
         onClick={onClose}
         aria-hidden="true"
       />
-      {/* Drawer */}
-      <div className="fixed inset-y-0 left-0 z-50 w-[260px] md:hidden shadow-xl">
+      <div className="fixed inset-y-0 left-0 z-50 w-64 md:hidden shadow-level-3">
         <SidebarContent onClose={onClose} />
       </div>
     </>

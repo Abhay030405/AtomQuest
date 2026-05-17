@@ -63,7 +63,7 @@ async def main() -> None:
             full_name="Priya Sharma",
             role=UserRole.ADMIN,
             department_id=dept_hr.id,
-            employee_code="ATB001",
+            employee_code="AT-H00001",
         )
         session.add(priya)
         await session.flush()
@@ -74,7 +74,7 @@ async def main() -> None:
             full_name="Vikram Nair",
             role=UserRole.MANAGER,
             department_id=dept_sales.id,
-            employee_code="ATB002",
+            employee_code="AT-M00001",
             manager_id=priya.id,
         )
         kavya = User(
@@ -83,7 +83,7 @@ async def main() -> None:
             full_name="Kavya Reddy",
             role=UserRole.MANAGER,
             department_id=dept_ops.id,
-            employee_code="ATB003",
+            employee_code="AT-M00002",
             manager_id=priya.id,
         )
         session.add_all([vikram, kavya])
@@ -95,7 +95,7 @@ async def main() -> None:
             full_name="Rahul Verma",
             role=UserRole.EMPLOYEE,
             department_id=dept_sales.id,
-            employee_code="ATB004",
+            employee_code="AT-E00001",
             manager_id=vikram.id,
         )
         sneha = User(
@@ -104,7 +104,7 @@ async def main() -> None:
             full_name="Sneha Patel",
             role=UserRole.EMPLOYEE,
             department_id=dept_sales.id,
-            employee_code="ATB005",
+            employee_code="AT-E00002",
             manager_id=vikram.id,
         )
         arjun = User(
@@ -113,7 +113,7 @@ async def main() -> None:
             full_name="Arjun Mehta",
             role=UserRole.EMPLOYEE,
             department_id=dept_ops.id,
-            employee_code="ATB006",
+            employee_code="AT-E00003",
             manager_id=kavya.id,
         )
         divya = User(
@@ -122,22 +122,56 @@ async def main() -> None:
             full_name="Divya Singh",
             role=UserRole.EMPLOYEE,
             department_id=dept_ops.id,
-            employee_code="ATB007",
+            employee_code="AT-E00004",
             manager_id=kavya.id,
         )
         session.add_all([rahul, sneha, arjun, divya])
         await session.flush()
 
-        # ── Step 3: Active Cycle Config ────────────────────────────────────────
+        # ── Step 3: Cycle Config — FY2026 windows ─────────────────────────────
+        # GOAL_SETTING window closed on May 31. For Phase 2 demo, Q1 is opened
+        # early (today: 2026-05-17) so achievement logging / check-ins work live.
         cycle = CycleConfig(
             cycle_name="FY2026",
             phase=CyclePhase.GOAL_SETTING,
             window_open=utc(2026, 5, 1, 0, 0, 0),
             window_close=utc(2026, 5, 31, 23, 59, 59),
+            is_active=False,
+            created_by=priya.id,
+        )
+        cycle_q1 = CycleConfig(
+            cycle_name="FY2026",
+            phase=CyclePhase.Q1,
+            window_open=utc(2026, 5, 17, 0, 0, 0),  # opened early for demo
+            window_close=utc(2026, 7, 31, 23, 59, 59),
             is_active=True,
             created_by=priya.id,
         )
-        session.add(cycle)
+        cycle_q2 = CycleConfig(
+            cycle_name="FY2026",
+            phase=CyclePhase.Q2,
+            window_open=utc(2026, 10, 1, 0, 0, 0),
+            window_close=utc(2026, 10, 31, 23, 59, 59),
+            is_active=False,
+            created_by=priya.id,
+        )
+        cycle_q3 = CycleConfig(
+            cycle_name="FY2026",
+            phase=CyclePhase.Q3,
+            window_open=utc(2027, 1, 1, 0, 0, 0),
+            window_close=utc(2027, 1, 31, 23, 59, 59),
+            is_active=False,
+            created_by=priya.id,
+        )
+        cycle_q4 = CycleConfig(
+            cycle_name="FY2026",
+            phase=CyclePhase.Q4,
+            window_open=utc(2027, 4, 1, 0, 0, 0),
+            window_close=utc(2027, 4, 30, 23, 59, 59),
+            is_active=False,
+            created_by=priya.id,
+        )
+        session.add_all([cycle, cycle_q1, cycle_q2, cycle_q3, cycle_q4])
         await session.flush()
 
         # ── Step 4: Rahul — APPROVED sheet, LOCKED goals ──────────────────────

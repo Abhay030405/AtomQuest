@@ -1,12 +1,13 @@
-import { lazy, Suspense } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { lazy, Suspense, useEffect } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AppShell } from "@/components/layout/AppShell";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
 import { useAuthStore } from "@/store/authStore";
 import { Permission } from "@/types/user.types";
-import { ROUTES } from "@/constants/routes";
+import { ROUTES, ROUTE_PATTERNS } from "@/constants/routes";
+import { logRouteChange } from "@/utils/devRouteLogger";
 
 // ─── Lazy-loaded pages ────────────────────────────────────────────────────────
 
@@ -23,6 +24,7 @@ const TeamGoalsPage = lazy(() => import("@/pages/manager/TeamGoalsPage"));
 const CheckinModule = lazy(() => import("@/pages/manager/CheckinModule"));
 
 const AdminDashboard = lazy(() => import("@/pages/admin/AdminDashboard"));
+const PersonnelPage = lazy(() => import("@/pages/admin/PersonnelPage"));
 const CycleConfigPage = lazy(() => import("@/pages/admin/CycleConfigPage"));
 const SharedGoalsPage = lazy(() => import("@/pages/admin/SharedGoalsPage"));
 const AuditTrailPage = lazy(() => import("@/pages/admin/AuditTrailPage"));
@@ -48,12 +50,32 @@ function PageLoader() {
 // ─── Root redirect — role-aware ───────────────────────────────────────────────
 
 function RootRedirect() {
-  const { isAuthenticated, hasPermission } = useAuthStore();
+  const { isAuthenticated, hasPermission, currentUser } = useAuthStore();
+
+  if (!currentUser?.id) return <Navigate to={ROUTES.LOGIN} replace />;
 
   if (!isAuthenticated) return <Navigate to={ROUTES.LOGIN} replace />;
-  if (hasPermission(Permission.CONFIGURE_CYCLE)) return <Navigate to={ROUTES.ADMIN.ROOT} replace />;
-  if (hasPermission(Permission.APPROVE_GOAL)) return <Navigate to={ROUTES.MANAGER.ROOT} replace />;
-  return <Navigate to={ROUTES.EMPLOYEE.ROOT} replace />;
+  if (hasPermission(Permission.CONFIGURE_CYCLE)) return <Navigate to={ROUTES.ADMIN.ROOT(currentUser.id)} replace />;
+  if (hasPermission(Permission.APPROVE_GOAL)) return <Navigate to={ROUTES.MANAGER.ROOT(currentUser.id)} replace />;
+  return <Navigate to={ROUTES.EMPLOYEE.ROOT(currentUser.id)} replace />;
+}
+
+function RolePathRedirect({ role }: { role: "employee" | "manager" | "admin" }) {
+  const { currentUser, isAuthenticated } = useAuthStore();
+  if (!isAuthenticated || !currentUser?.id) return <Navigate to={ROUTES.LOGIN} replace />;
+  if (role === "admin") return <Navigate to={ROUTES.ADMIN.ROOT(currentUser.id)} replace />;
+  if (role === "manager") return <Navigate to={ROUTES.MANAGER.ROOT(currentUser.id)} replace />;
+  return <Navigate to={ROUTES.EMPLOYEE.ROOT(currentUser.id)} replace />;
+}
+
+function RouteLogger() {
+  const location = useLocation();
+
+  useEffect(() => {
+    logRouteChange(location.pathname);
+  }, [location.pathname]);
+
+  return null;
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
@@ -61,6 +83,7 @@ function RootRedirect() {
 export default function App() {
   return (
     <BrowserRouter>
+      <RouteLogger />
       <Suspense fallback={<PageLoader />}>
         <Routes>
           {/* Public */}
@@ -69,37 +92,41 @@ export default function App() {
           {/* Employee routes — gated by SUBMIT_GOAL_SHEET (employee-exclusive) */}
           <Route element={<ProtectedRoute requiredPermission={Permission.SUBMIT_GOAL_SHEET} />}>
             <Route element={<AppShell />}>
-              <Route path={ROUTES.EMPLOYEE.ROOT} element={<EmployeeDashboard />} />
-              <Route path={ROUTES.EMPLOYEE.GOALS} element={<MyGoals />} />
-              <Route path={ROUTES.EMPLOYEE.QUARTERLY_UPDATE} element={<QuarterlyUpdate />} />
-              <Route path="/employee/*" element={<Navigate to={ROUTES.EMPLOYEE.ROOT} replace />} />
+              <Route path={ROUTE_PATTERNS.EMPLOYEE.ROOT} element={<EmployeeDashboard />} />
+              <Route path={ROUTE_PATTERNS.EMPLOYEE.GOALS} element={<MyGoals />} />
+              <Route path={ROUTE_PATTERNS.EMPLOYEE.QUARTERLY_UPDATE} element={<QuarterlyUpdate />} />
             </Route>
           </Route>
+
+          <Route path="/employee/*" element={<RolePathRedirect role="employee" />} />
 
           {/* Manager routes — gated by APPROVE_GOAL */}
           <Route element={<ProtectedRoute requiredPermission={Permission.APPROVE_GOAL} />}>
             <Route element={<AppShell />}>
-              <Route path={ROUTES.MANAGER.ROOT} element={<ManagerDashboard />} />
-              <Route path={ROUTES.MANAGER.REVIEW} element={<ApprovalQueuePage />} />
-              <Route path="/manager/review/:sheetId" element={<GoalReviewPage />} />
-              <Route path={ROUTES.MANAGER.TEAM_GOALS} element={<TeamGoalsPage />} />
-              <Route path={ROUTES.MANAGER.CHECKIN} element={<CheckinModule />} />
-              <Route path="/manager/*" element={<Navigate to={ROUTES.MANAGER.ROOT} replace />} />
+              <Route path={ROUTE_PATTERNS.MANAGER.ROOT} element={<ManagerDashboard />} />
+              <Route path={ROUTE_PATTERNS.MANAGER.REVIEW} element={<ApprovalQueuePage />} />
+              <Route path={ROUTE_PATTERNS.MANAGER.REVIEW_SHEET} element={<GoalReviewPage />} />
+              <Route path={ROUTE_PATTERNS.MANAGER.TEAM_GOALS} element={<TeamGoalsPage />} />
+              <Route path={ROUTE_PATTERNS.MANAGER.CHECKIN} element={<CheckinModule />} />
             </Route>
           </Route>
+
+          <Route path="/manager/*" element={<RolePathRedirect role="manager" />} />
 
           {/* Admin routes — gated by CONFIGURE_CYCLE (admin-exclusive) */}
           <Route element={<ProtectedRoute requiredPermission={Permission.CONFIGURE_CYCLE} />}>
             <Route element={<AppShell />}>
-              <Route path={ROUTES.ADMIN.ROOT} element={<AdminDashboard />} />
-              <Route path={ROUTES.ADMIN.CYCLES} element={<CycleConfigPage />} />
-              <Route path={ROUTES.ADMIN.SHARED_GOALS} element={<SharedGoalsPage />} />
-              <Route path={ROUTES.ADMIN.AUDIT} element={<AuditTrailPage />} />
-              <Route path={ROUTES.ADMIN.REPORTS} element={<ReportsPage />} />
-              <Route path={ROUTES.ADMIN.GOAL_UNLOCK} element={<GoalUnlockPage />} />
-              <Route path="/admin/*" element={<Navigate to={ROUTES.ADMIN.ROOT} replace />} />
+              <Route path={ROUTE_PATTERNS.ADMIN.ROOT} element={<AdminDashboard />} />
+              <Route path={ROUTE_PATTERNS.ADMIN.PERSONNEL} element={<PersonnelPage />} />
+              <Route path={ROUTE_PATTERNS.ADMIN.CYCLES} element={<CycleConfigPage />} />
+              <Route path={ROUTE_PATTERNS.ADMIN.SHARED_GOALS} element={<SharedGoalsPage />} />
+              <Route path={ROUTE_PATTERNS.ADMIN.AUDIT} element={<AuditTrailPage />} />
+              <Route path={ROUTE_PATTERNS.ADMIN.REPORTS} element={<ReportsPage />} />
+              <Route path={ROUTE_PATTERNS.ADMIN.GOAL_UNLOCK} element={<GoalUnlockPage />} />
             </Route>
           </Route>
+
+          <Route path="/admin/*" element={<RolePathRedirect role="admin" />} />
 
           {/* Root + catch-all */}
           <Route path="/" element={<RootRedirect />} />

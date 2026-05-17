@@ -70,6 +70,8 @@ export interface Goal {
   status: GoalStatus;
   isShared: boolean;
   sourceSharedGoalId?: string;
+  /** Parent goal-sheet id — needed to dispatch sheet-level approve/return actions */
+  goalSheetId?: string;
   version: number;
   lockedAt?: string;
   lockedBy?: string;
@@ -88,6 +90,10 @@ export interface GoalSheet {
   totalWeightage: number;
   submittedAt?: string;
   approvedAt?: string;
+  employeeName?: string;
+  employeeRole?: string;
+  cycleName?: string;
+  returnedCount?: number;
 }
 
 export interface GoalVersion {

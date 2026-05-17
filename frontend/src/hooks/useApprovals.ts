@@ -4,7 +4,6 @@ import { approvalService } from "@/services/approval.service";
 import { goalService } from "@/services/goal.service";
 import { userService } from "@/services/user.service";
 import { useAuth } from "./useAuth";
-import type { Goal } from "@/types/goal.types";
 
 export function useSheetForReview(sheetId: string) {
   return useQuery({
@@ -25,10 +24,17 @@ export function useDirectReports() {
   });
 }
 
+export function useAllUsers() {
+  return useQuery({
+    queryKey: ["all-users"],
+    queryFn: () => userService.getAllUsers(),
+  });
+}
+
 export function useTeamSheets(cycleId: string) {
   return useQuery({
     queryKey: ["team-sheets", cycleId],
-    queryFn: () => goalService.getAllSheets(cycleId),
+    queryFn: async () => (await goalService.getAllSheets(cycleId)).items,
     enabled: Boolean(cycleId),
   });
 }
@@ -44,6 +50,8 @@ export function useApproveSheet() {
       qc.invalidateQueries({ queryKey: ["pending-approvals"] });
       qc.invalidateQueries({ queryKey: ["sheet-review"] });
       qc.invalidateQueries({ queryKey: ["team-sheets"] });
+      qc.invalidateQueries({ queryKey: ["team-goals"] });
+      qc.invalidateQueries({ queryKey: ["all-goals"] });
     },
     onError: () => {
       toast.error("Failed to approve sheet. Please try again.");
@@ -61,6 +69,8 @@ export function useReturnForRework() {
       qc.invalidateQueries({ queryKey: ["pending-approvals"] });
       qc.invalidateQueries({ queryKey: ["sheet-review"] });
       qc.invalidateQueries({ queryKey: ["team-sheets"] });
+      qc.invalidateQueries({ queryKey: ["team-goals"] });
+      qc.invalidateQueries({ queryKey: ["all-goals"] });
     },
     onError: () => {
       toast.error("Failed to return sheet. Please try again.");
@@ -72,11 +82,25 @@ export function useInlineEditGoal() {
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ goalId, patch }: { goalId: string; patch: Partial<Goal> }) =>
-      approvalService.inlineEditGoal(goalId, patch),
+    mutationFn: ({
+      sheetId,
+      goalId,
+      patch,
+    }: {
+      sheetId: string;
+      goalId: string;
+      patch: {
+        targetValue?: number | null;
+        targetDate?: string | null;
+        weightage?: number;
+        changeReason: string;
+      };
+    }) => approvalService.inlineEditGoal(sheetId, goalId, patch),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["sheet-review"] });
       qc.invalidateQueries({ queryKey: ["goal-versions"] });
+      qc.invalidateQueries({ queryKey: ["team-goals"] });
+      qc.invalidateQueries({ queryKey: ["all-goals"] });
     },
     onError: () => {
       toast.error("Failed to save change. Please try again.");

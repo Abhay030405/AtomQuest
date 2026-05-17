@@ -9,11 +9,11 @@ import {
   Eye,
   EyeOff,
   ArrowLeft,
+  AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
-import { mockUsers } from "@/mocks/mockUsers";
 import { Permission } from "@/types/user.types";
 import { ROUTES } from "@/constants/routes";
 
@@ -38,10 +38,10 @@ function useTheme() {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function getDashboard(permissions: string[]): string {
-  if (permissions.includes(Permission.CONFIGURE_CYCLE)) return ROUTES.ADMIN.ROOT;
-  if (permissions.includes(Permission.APPROVE_GOAL)) return ROUTES.MANAGER.ROOT;
-  return ROUTES.EMPLOYEE.ROOT;
+function getDashboard(permissions: string[], userId: string): string {
+  if (permissions.includes(Permission.CONFIGURE_CYCLE)) return ROUTES.ADMIN.ROOT(userId);
+  if (permissions.includes(Permission.APPROVE_GOAL)) return ROUTES.MANAGER.ROOT(userId);
+  return ROUTES.EMPLOYEE.ROOT(userId);
 }
 
 // ─── Role config ───────────────────────────────────────────────────────────────
@@ -51,7 +51,7 @@ const ROLES = [
     key: "employee",
     title: "Employee",
     desc: "Access your goals and track progress",
-    email: "rahul.verma@atomberg.com",
+    accent: "#2f6ee8",
     gradient: "linear-gradient(135deg,#4f8df9 0%,#2f6ee8 100%)",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
@@ -67,7 +67,7 @@ const ROLES = [
     key: "manager",
     title: "Manager",
     desc: "Review team goals and performance",
-    email: "vikram.nair@atomberg.com",
+    accent: "#5b3ce0",
     gradient: "linear-gradient(135deg,#7b5cf7 0%,#5b3ce0 100%)",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
@@ -83,7 +83,7 @@ const ROLES = [
     key: "admin",
     title: "Admin",
     desc: "Manage users and system settings",
-    email: "priya.sharma@atomberg.com",
+    accent: "#0d9488",
     gradient: "linear-gradient(135deg,#2dd4bf 0%,#14b8a6 100%)",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
@@ -97,6 +97,10 @@ const ROLES = [
 
 type RoleConfig = (typeof ROLES)[number];
 
+// ─── Premium display font (headings only) ──────────────────────────────────────
+
+const DISPLAY_FONT = "'Plus Jakarta Sans', 'Geist', system-ui, sans-serif";
+
 // ─── CSS vars shorthand per theme ──────────────────────────────────────────────
 
 function tv(theme: "light" | "dark", light: string, dark: string) {
@@ -104,13 +108,14 @@ function tv(theme: "light" | "dark", light: string, dark: string) {
 }
 
 const T = {
-  bg:         (t: "light" | "dark") => tv(t, "#f3f4f7", "#0b1220"),
-  panel:      (t: "light" | "dark") => tv(t, "#ffffff",  "#111a2e"),
-  border:     (t: "light" | "dark") => tv(t, "#e5e7ee",  "#1f2a44"),
-  borderStrong:(t: "light" | "dark") => tv(t, "#d8dbe4", "#2a3656"),
-  text:       (t: "light" | "dark") => tv(t, "#0b1220",  "#f1f5fb"),
-  muted:      (t: "light" | "dark") => tv(t, "#5b6477",  "#9aa3b7"),
-  inputBg:    (t: "light" | "dark") => tv(t, "#f3f4f7",  "#0b1220"),
+  bg:          (t: "light" | "dark") => tv(t, "#f3f4f7", "#0b1220"),
+  panel:       (t: "light" | "dark") => tv(t, "#ffffff", "#111a2e"),
+  // Stronger borders so the boxes read crisp instead of washed-out.
+  border:      (t: "light" | "dark") => tv(t, "#d6dae3", "#2a3656"),
+  borderStrong:(t: "light" | "dark") => tv(t, "#bcc2d1", "#3a4868"),
+  text:        (t: "light" | "dark") => tv(t, "#0b1220", "#f1f5fb"),
+  muted:       (t: "light" | "dark") => tv(t, "#5b6477", "#9aa3b7"),
+  inputBg:     (t: "light" | "dark") => tv(t, "#f3f4f7", "#0b1220"),
 };
 
 // ─── Shared input style ────────────────────────────────────────────────────────
@@ -157,10 +162,16 @@ function RolesView({ theme, onRoleClick }: RolesViewProps) {
   return (
     <>
       {/* Hero */}
-      <div className="mb-8 text-center">
+      <div className="mb-10 text-center">
         <h1
-          className="mb-3 font-bold"
-          style={{ fontSize: 44, lineHeight: 1.05, letterSpacing: "-0.02em", color: T.text(theme) }}
+          className="mb-3 font-extrabold"
+          style={{
+            fontFamily: DISPLAY_FONT,
+            fontSize: 44,
+            lineHeight: 1.05,
+            letterSpacing: "-0.03em",
+            color: T.text(theme),
+          }}
         >
           Welcome back
         </h1>
@@ -175,16 +186,23 @@ function RolesView({ theme, onRoleClick }: RolesViewProps) {
         onClick={handleMicrosoft}
         disabled={msLoading}
         className={cn(
-          "flex w-full items-center justify-center gap-3.5 rounded-2xl px-5 py-[18px]",
-          "text-[17px] font-semibold shadow-[0_1px_2px_rgba(15,23,42,0.04),0_1px_1px_rgba(15,23,42,0.02)]",
-          "transition-all duration-150 hover:-translate-y-px",
-          "hover:shadow-[0_8px_24px_-8px_rgba(15,23,42,0.12),0_2px_6px_rgba(15,23,42,0.06)]",
-          "hover:border-[var(--border-s)] disabled:pointer-events-none disabled:opacity-75"
+          "flex w-full items-center justify-center gap-3.5 rounded-xl px-5 py-[19px]",
+          "text-[16px] font-semibold transition-all duration-150 hover:-translate-y-px",
+          "disabled:pointer-events-none disabled:opacity-75"
         )}
         style={{
           background: T.panel(theme),
-          border: `1px solid ${T.border(theme)}`,
+          border: `1px solid ${T.borderStrong(theme)}`,
           color: T.text(theme),
+          boxShadow: "0 1px 2px rgba(16,24,40,0.05)",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.borderColor = "#7e14ff";
+          e.currentTarget.style.boxShadow = "0 0 0 3px rgba(126,20,255,0.12), 0 8px 20px -8px rgba(16,24,40,0.18)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.borderColor = T.borderStrong(theme);
+          e.currentTarget.style.boxShadow = "0 1px 2px rgba(16,24,40,0.05)";
         }}
       >
         {msLoading ? (
@@ -202,7 +220,7 @@ function RolesView({ theme, onRoleClick }: RolesViewProps) {
 
       {/* OR divider */}
       <div
-        className="my-7 grid items-center gap-4 text-[16px]"
+        className="my-8 grid items-center gap-4 text-[16px]"
         style={{ gridTemplateColumns: "1fr auto 1fr", color: T.muted(theme) }}
       >
         <div className="h-px" style={{ background: T.borderStrong(theme) }} />
@@ -211,39 +229,50 @@ function RolesView({ theme, onRoleClick }: RolesViewProps) {
       </div>
 
       {/* "Login as" label */}
-      <p className="mb-3.5 text-[18px] font-bold" style={{ color: T.text(theme) }}>
+      <p
+        className="mb-4 text-[18px] font-bold"
+        style={{ fontFamily: DISPLAY_FONT, letterSpacing: "-0.01em", color: T.text(theme) }}
+      >
         Login as
       </p>
 
       {/* Role cards */}
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3.5">
         {ROLES.map((role) => (
           <button
             key={role.key}
             type="button"
             onClick={() => onRoleClick(role)}
             className={cn(
-              "group flex w-full items-center gap-4 rounded-2xl px-4 py-4 text-left",
-              "shadow-[0_1px_2px_rgba(15,23,42,0.04)]",
-              "transition-all duration-150 hover:-translate-y-px",
-              "hover:shadow-[0_8px_24px_-8px_rgba(15,23,42,0.12),0_2px_6px_rgba(15,23,42,0.06)]"
+              "group flex w-full items-center gap-4 rounded-xl px-4 py-[18px] text-left",
+              "transition-all duration-150 hover:-translate-y-px"
             )}
             style={{
               background: T.panel(theme),
               border: `1px solid ${T.border(theme)}`,
               color: T.text(theme),
+              boxShadow: "0 1px 2px rgba(16,24,40,0.04)",
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.borderColor = T.borderStrong(theme))}
-            onMouseLeave={(e) => (e.currentTarget.style.borderColor = T.border(theme))}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = role.accent;
+              e.currentTarget.style.boxShadow = `0 0 0 3px ${role.accent}1f, 0 10px 24px -10px rgba(16,24,40,0.22)`;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = T.border(theme);
+              e.currentTarget.style.boxShadow = "0 1px 2px rgba(16,24,40,0.04)";
+            }}
           >
             <span
-              className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-white"
+              className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]"
               style={{ background: role.gradient }}
             >
               {role.icon}
             </span>
             <span className="flex-1 min-w-0">
-              <span className="block text-[17px] font-bold leading-snug" style={{ color: T.text(theme) }}>
+              <span
+                className="block text-[17px] font-bold leading-snug"
+                style={{ fontFamily: DISPLAY_FONT, letterSpacing: "-0.01em", color: T.text(theme) }}
+              >
                 {role.title}
               </span>
               <span className="block text-sm leading-snug" style={{ color: T.muted(theme) }}>
@@ -260,7 +289,7 @@ function RolesView({ theme, onRoleClick }: RolesViewProps) {
 
       {/* Footer */}
       <div
-        className="mt-7 flex w-full items-center justify-center gap-2 text-sm"
+        className="mt-10 flex w-full items-center justify-center gap-2 text-sm"
         style={{ color: T.muted(theme) }}
       >
         <Lock className="h-4 w-4" />
@@ -282,7 +311,7 @@ function CredentialsView({ theme, role, onBack }: CredentialsViewProps) {
   const navigate = useNavigate();
   const { login, isLoading } = useAuthStore();
 
-  const [identifier, setIdentifier] = useState<string>(role.email);
+  const [identifier, setIdentifier] = useState<string>("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -291,24 +320,30 @@ function CredentialsView({ theme, role, onBack }: CredentialsViewProps) {
     e.preventDefault();
     setError(null);
     try {
-      // identifier may be email or phone — look up by email in mock
-      const emailToUse = identifier.includes("@")
-        ? identifier
-        : role.email; // fallback to role email if phone entered
-      await login(emailToUse, password || "password");
-      const user = mockUsers.find(
-        (u) => u.email.toLowerCase() === emailToUse.toLowerCase()
-      );
-      if (user) {
-        toast.success(`Signed in as ${user.fullName}`);
-        navigate(getDashboard(user.permissions));
-      }
+      const user = await login(identifier, password, role.key);
+      console.log("Auth permissions:", user.permissions);
+      toast.success(`Signed in as ${user.fullName}`);
+      navigate(getDashboard(user.permissions, user.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Invalid credentials. Please try again.");
     }
   };
 
   const focusBorder = "#3b82f6";
+
+  const applyFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    e.currentTarget.style.borderColor = focusBorder;
+    e.currentTarget.style.boxShadow = "0 0 0 3px rgba(59,130,246,0.15)";
+  };
+  const clearFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    e.currentTarget.style.borderColor = T.border(theme);
+    e.currentTarget.style.boxShadow = "none";
+  };
+
+  const handleForgot = () =>
+    toast.info("Password reset is not configured in this demo.");
+
+  const labelCls = "mb-1.5 block text-[13px] font-semibold";
 
   return (
     <>
@@ -324,16 +359,22 @@ function CredentialsView({ theme, role, onBack }: CredentialsViewProps) {
       </button>
 
       {/* Role badge */}
-      <div className="mb-8 flex flex-col items-center text-center">
+      <div className="mb-9 flex flex-col items-center text-center">
         <span
-          className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl text-white shadow-lg"
+          className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_8px_20px_-8px_rgba(16,24,40,0.4)]"
           style={{ background: role.gradient }}
         >
           <span className="scale-125">{role.icon}</span>
         </span>
         <h1
-          className="mb-1.5 font-bold"
-          style={{ fontSize: 36, lineHeight: 1.1, letterSpacing: "-0.02em", color: T.text(theme) }}
+          className="mb-1.5 font-extrabold"
+          style={{
+            fontFamily: DISPLAY_FONT,
+            fontSize: 34,
+            lineHeight: 1.1,
+            letterSpacing: "-0.03em",
+            color: T.text(theme),
+          }}
         >
           Sign in as {role.title}
         </h1>
@@ -343,55 +384,86 @@ function CredentialsView({ theme, role, onBack }: CredentialsViewProps) {
       </div>
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="space-y-3">
-        {/* Phone or email */}
-        <input
-          type="text"
-          placeholder="Phone number or email"
-          autoComplete="username"
-          value={identifier}
-          onChange={(e) => setIdentifier(e.target.value)}
-          required
-          className="w-full rounded-xl px-4 py-3.5 text-[15px] outline-none transition-all"
-          style={inputStyle(theme)}
-          onFocus={(e) => (e.currentTarget.style.borderColor = focusBorder)}
-          onBlur={(e) => (e.currentTarget.style.borderColor = T.border(theme))}
-        />
+      <form onSubmit={handleSubmit} className="space-y-5">
+        {/* Email or phone */}
+        <div>
+          <label htmlFor="identifier" className={labelCls} style={{ color: T.text(theme) }}>
+            Email or phone number
+          </label>
+          <input
+            id="identifier"
+            type="text"
+            placeholder="name@company.com"
+            autoComplete="username"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+            required
+            className="w-full rounded-xl px-4 py-[15px] text-[15px] outline-none transition-all"
+            style={inputStyle(theme)}
+            onFocus={applyFocus}
+            onBlur={clearFocus}
+          />
+        </div>
 
         {/* Password with eye toggle */}
-        <div className="relative">
-          <input
-            type={showPw ? "text" : "password"}
-            placeholder="Password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            className="w-full rounded-xl px-4 py-3.5 pr-12 text-[15px] outline-none transition-all"
-            style={inputStyle(theme)}
-            onFocus={(e) => (e.currentTarget.style.borderColor = focusBorder)}
-            onBlur={(e) => (e.currentTarget.style.borderColor = T.border(theme))}
-          />
-          <button
-            type="button"
-            onClick={() => setShowPw((v) => !v)}
-            className="absolute right-3.5 top-1/2 -translate-y-1/2 rounded-md p-1 transition-opacity hover:opacity-70"
-            style={{ color: T.muted(theme) }}
-            tabIndex={-1}
-            aria-label={showPw ? "Hide password" : "Show password"}
-          >
-            {showPw ? <EyeOff className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
-          </button>
+        <div>
+          <div className="mb-1.5 flex items-center justify-between">
+            <label
+              htmlFor="password"
+              className="text-[13px] font-semibold"
+              style={{ color: T.text(theme) }}
+            >
+              Password
+            </label>
+            <button
+              type="button"
+              onClick={handleForgot}
+              className="text-[13px] font-medium transition-opacity hover:opacity-70"
+              style={{ color: focusBorder }}
+            >
+              Forgot password?
+            </button>
+          </div>
+          <div className="relative">
+            <input
+              id="password"
+              type={showPw ? "text" : "password"}
+              placeholder="Enter your password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="w-full rounded-xl px-4 py-[15px] pr-12 text-[15px] outline-none transition-all"
+              style={inputStyle(theme)}
+              onFocus={applyFocus}
+              onBlur={clearFocus}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPw((v) => !v)}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 rounded-md p-1 transition-opacity hover:opacity-70"
+              style={{ color: T.muted(theme) }}
+              tabIndex={-1}
+              aria-label={showPw ? "Hide password" : "Show password"}
+            >
+              {showPw ? <EyeOff className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
+            </button>
+          </div>
         </div>
 
         {/* Error */}
         {error && (
-          <p
-            className="rounded-xl px-4 py-2.5 text-sm"
-            style={{ background: "#fef2f2", color: "#dc2626" }}
+          <div
+            className="flex items-start gap-2.5 rounded-xl px-3.5 py-3 text-[13px] font-medium"
+            style={{
+              background: tv(theme, "#fef2f2", "rgba(220,38,38,0.12)"),
+              border: `1px solid ${tv(theme, "#fecaca", "rgba(248,113,113,0.35)")}`,
+              color: tv(theme, "#b91c1c", "#fca5a5"),
+            }}
           >
-            {error}
-          </p>
+            <AlertCircle className="mt-px h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
         )}
 
         {/* Sign In button */}
@@ -399,12 +471,15 @@ function CredentialsView({ theme, role, onBack }: CredentialsViewProps) {
           type="submit"
           disabled={isLoading}
           className={cn(
-            "flex w-full items-center justify-center gap-3 rounded-xl py-4",
+            "mt-2 flex w-full items-center justify-center gap-3 rounded-xl py-[18px]",
             "text-[16px] font-semibold text-white",
             "transition-all duration-150 hover:-translate-y-px hover:brightness-110",
             "disabled:opacity-70 disabled:pointer-events-none"
           )}
-          style={{ background: role.gradient }}
+          style={{
+            background: role.gradient,
+            boxShadow: `0 10px 22px -10px ${role.accent}99`,
+          }}
         >
           {isLoading ? (
             <Loader2 className="h-5 w-5 animate-spin" />
@@ -414,17 +489,9 @@ function CredentialsView({ theme, role, onBack }: CredentialsViewProps) {
         </button>
       </form>
 
-      {/* Demo hint */}
-      <p
-        className="mt-5 text-center text-xs"
-        style={{ color: T.muted(theme) }}
-      >
-        Demo mode — any password accepted
-      </p>
-
       {/* Footer */}
       <div
-        className="mt-6 flex w-full items-center justify-center gap-2 text-sm"
+        className="mt-9 flex w-full items-center justify-center gap-2 text-sm"
         style={{ color: T.muted(theme) }}
       >
         <Lock className="h-4 w-4" />
@@ -472,7 +539,7 @@ export default function LoginPage() {
 
       {/* ── RIGHT: login panel ─────────────────────────────────────────────── */}
       <main
-        className="relative flex items-center justify-center overflow-y-auto px-6 py-12 md:px-14"
+        className="relative flex items-center justify-center overflow-y-auto px-6 py-16 md:px-14"
         style={{ background: T.bg(theme) }}
       >
         {/* Theme toggle */}

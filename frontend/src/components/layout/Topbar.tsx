@@ -1,85 +1,68 @@
 import { useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import {
-  Bell,
-  Info,
-  AlertTriangle,
-  CheckCircle2,
-  Zap,
-  Menu,
-  Check,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { useNavigate } from "react-router-dom";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Separator } from "@/components/ui/separator";
 import { useAuthStore } from "@/store/authStore";
 import { useNotificationStore } from "@/store/notificationStore";
-import { PAGE_TITLES } from "@/constants/routes";
-import { getRoleDisplayName, getRoleColor } from "@/utils/permission.util";
 import { timeAgo } from "@/utils/date.util";
 import { cn } from "@/lib/utils";
 import type { Notification } from "@/types/notification";
 
 // ─── Notification icon per type ───────────────────────────────────────────────
 
-function NotifIcon({ type }: { type: Notification["type"] }) {
-  const cls = "h-4 w-4 shrink-0 mt-0.5";
+function notifIcon(type: Notification["type"]): string {
   switch (type) {
-    case "success":
-      return <CheckCircle2 className={cn(cls, "text-emerald-500")} />;
-    case "warning":
-      return <AlertTriangle className={cn(cls, "text-amber-500")} />;
-    case "action":
-      return <Zap className={cn(cls, "text-indigo-500")} />;
-    default:
-      return <Info className={cn(cls, "text-blue-500")} />;
+    case "success": return "check_circle";
+    case "warning": return "warning";
+    case "action": return "bolt";
+    default: return "info";
+  }
+}
+
+function notifIconColor(type: Notification["type"]): string {
+  switch (type) {
+    case "success": return "text-tertiary bg-tertiary/10";
+    case "warning": return "text-[#b45309] bg-[#fef3c7]";
+    case "action": return "text-primary bg-primary/10";
+    default: return "text-secondary bg-secondary-container";
   }
 }
 
 // ─── Notification dropdown ────────────────────────────────────────────────────
 
-function NotificationPanel() {
+function NotificationPanel({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
-  const { notifications, unreadCount, markRead, markAllRead } =
-    useNotificationStore();
-
-  const recent = notifications.slice(0, 5);
+  const currentUser = useAuthStore((s) => s.currentUser);
+  const { notifications, unreadCount, markRead, markAllRead } = useNotificationStore();
+  const recent = notifications.slice(0, 6);
 
   return (
-    <div className="flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b">
-        <div className="flex items-center gap-2">
-          <h3 className="text-sm font-semibold">Notifications</h3>
+    <div className="flex flex-col w-80">
+      <div className="flex items-center justify-between px-md py-sm border-b border-outline-variant">
+        <div className="flex items-center gap-sm">
+          <h3 className="text-title-md text-on-surface">Notifications</h3>
           {unreadCount > 0 && (
-            <Badge className="h-4 px-1.5 text-[10px] bg-red-500 hover:bg-red-500">
+            <span className="bg-error text-on-error text-label-md font-bold px-1.5 py-0.5 rounded-full text-[10px]">
               {unreadCount}
-            </Badge>
+            </span>
           )}
         </div>
         {unreadCount > 0 && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 px-2 text-xs text-muted-foreground"
-            onClick={markAllRead}
+          <button
+            onClick={() => void markAllRead()}
+            className="text-label-md text-primary hover:underline"
           >
-            <Check className="mr-1 h-3 w-3" />
             Mark all read
-          </Button>
+          </button>
         )}
       </div>
 
-      {/* List */}
-      <div className="max-h-[360px] overflow-y-auto">
+      <div className="max-h-80 overflow-y-auto">
         {recent.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">
+          <p className="py-8 text-center text-body-md text-on-surface-variant">
             No notifications
           </p>
         ) : (
@@ -87,47 +70,38 @@ function NotificationPanel() {
             <button
               key={n.id}
               className={cn(
-                "w-full flex items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50",
-                !n.read && "bg-blue-50/60"
+                "w-full flex items-start gap-md px-md py-sm text-left transition-colors hover:bg-surface-container-low border-b border-outline-variant/50 last:border-0",
+                !n.read && "bg-primary-fixed/20"
               )}
               onClick={() => {
-                markRead(n.id);
-                if (n.actionUrl) navigate(n.actionUrl);
+                if (currentUser?.id) {
+                  void markRead(n.id, currentUser.id);
+                }
+                if (n.actionUrl) {
+                  navigate(n.actionUrl);
+                  onClose();
+                }
               }}
             >
-              <NotifIcon type={n.type} />
-              <div className="flex-1 min-w-0 space-y-0.5">
-                <div className="flex items-start justify-between gap-2">
-                  <p className={cn("text-xs font-medium leading-snug", !n.read && "text-foreground")}>
+              <div className={cn("w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5", notifIconColor(n.type))}>
+                <span className="material-symbols-outlined text-[16px]">{notifIcon(n.type)}</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-start justify-between gap-sm">
+                  <p className={cn("text-body-md leading-snug", !n.read ? "text-on-surface font-medium" : "text-on-surface-variant")}>
                     {n.title}
                   </p>
                   {!n.read && (
-                    <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-red-500" />
+                    <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-error" />
                   )}
                 </div>
-                <p className="text-[11px] text-muted-foreground leading-snug line-clamp-2">
-                  {n.message}
-                </p>
-                <p className="text-[10px] text-muted-foreground/70">
-                  {timeAgo(n.createdAt)}
-                </p>
+                <p className="text-label-md text-on-surface-variant mt-0.5 line-clamp-2">{n.message}</p>
+                <p className="text-[10px] text-on-surface-variant/70 mt-xs">{timeAgo(n.createdAt)}</p>
               </div>
             </button>
           ))
         )}
       </div>
-
-      {/* Footer */}
-      {notifications.length > 5 && (
-        <>
-          <Separator />
-          <div className="py-2 text-center">
-            <Button variant="ghost" size="sm" className="text-xs text-indigo-600">
-              View all notifications
-            </Button>
-          </div>
-        </>
-      )}
     </div>
   );
 }
@@ -139,74 +113,47 @@ interface TopbarProps {
 }
 
 export function Topbar({ onMobileMenuClick }: TopbarProps) {
-  const { pathname } = useLocation();
   const { currentUser } = useAuthStore();
   const { unreadCount } = useNotificationStore();
   const [notifOpen, setNotifOpen] = useState(false);
 
-  // Page title: try exact match, then longest prefix match
-  const pageTitle =
-    PAGE_TITLES[pathname] ??
-    Object.entries(PAGE_TITLES)
-      .filter(([path]) => pathname.startsWith(path + "/"))
-      .sort(([a], [b]) => b.length - a.length)[0]?.[1] ??
-    "AtomQuest Portal";
-
   return (
-    <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between border-b bg-card px-4 md:px-6 shadow-sm">
-      {/* Left: hamburger (mobile) + page title */}
-      <div className="flex items-center gap-3">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="md:hidden"
+    <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between border-b border-outline-variant bg-surface-container-lowest px-lg shadow-level-1">
+      {/* Left: mobile menu */}
+      <div className="flex items-center gap-md flex-1">
+        <button
+          className="md:hidden text-on-surface-variant hover:bg-surface-container-low p-sm rounded-full transition-colors"
           onClick={onMobileMenuClick}
         >
-          <Menu className="h-5 w-5" />
-        </Button>
-        <h1 className="text-base font-semibold text-foreground">{pageTitle}</h1>
+          <span className="material-symbols-outlined">menu</span>
+        </button>
       </div>
 
-      {/* Right: notification bell + user info */}
-      <div className="flex items-center gap-2">
+      {/* Right: notifications + user */}
+      <div className="flex items-center gap-sm">
         {/* Notification bell */}
         <Popover open={notifOpen} onOpenChange={setNotifOpen}>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="h-4 w-4" />
+            <button className="relative text-on-surface-variant hover:bg-surface-container-low p-sm rounded-full transition-colors cursor-pointer">
+              <span className="material-symbols-outlined">notifications</span>
               {unreadCount > 0 && (
-                <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
-                  {unreadCount > 9 ? "9+" : unreadCount}
-                </span>
+                <span className="absolute top-1 right-1 w-2 h-2 bg-error rounded-full" />
               )}
-            </Button>
+            </button>
           </PopoverTrigger>
-          <PopoverContent
-            className="w-80 p-0 shadow-xl"
-            align="end"
-            sideOffset={8}
-          >
-            <NotificationPanel />
+          <PopoverContent className="p-0 shadow-level-2 border-outline-variant" align="end" sideOffset={8}>
+            <NotificationPanel onClose={() => setNotifOpen(false)} />
           </PopoverContent>
         </Popover>
 
-        {/* User name + role badge (desktop only) */}
+        <button className="text-on-surface-variant hover:bg-surface-container-low p-sm rounded-full transition-colors cursor-pointer hidden md:flex">
+          <span className="material-symbols-outlined">help_outline</span>
+        </button>
+
+        {/* User avatar */}
         {currentUser && (
-          <div className="hidden md:flex items-center gap-2">
-            <Avatar className="h-7 w-7">
-              <AvatarFallback className="bg-indigo-100 text-indigo-700 text-xs font-semibold">
-                {currentUser.avatarInitials}
-              </AvatarFallback>
-            </Avatar>
-            <span className="text-sm font-medium text-foreground">
-              {currentUser.fullName.split(" ")[0]}
-            </span>
-            <Badge
-              variant="secondary"
-              className={cn("text-xs", getRoleColor(currentUser.role))}
-            >
-              {getRoleDisplayName(currentUser.role)}
-            </Badge>
+          <div className="w-8 h-8 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-label-md font-bold cursor-pointer border border-outline-variant ml-xs">
+            {currentUser.avatarInitials}
           </div>
         )}
       </div>

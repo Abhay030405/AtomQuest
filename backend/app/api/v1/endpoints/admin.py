@@ -56,6 +56,10 @@ class UnlockGoalRequest(BaseSchema):
 	reason: str = Field(min_length=30, max_length=500)
 
 
+class UnlockSheetRequest(BaseSchema):
+	reason: str = Field(min_length=20, max_length=500)
+
+
 def _build_cycle_response(cycle: CycleConfig) -> CycleResponse:
 	return CycleResponse.model_validate(
 		{
@@ -147,3 +151,16 @@ async def unlock_goal(
 ) -> APIResponse[dict]:
 	await shared_goal_service.unlock_goal(goal_id, current_user, payload.reason, db)
 	return APIResponse.ok({"message": "Goal unlocked successfully"})
+
+
+@router.post("/sheets/{sheet_id}/unlock", response_model=APIResponse[dict])
+async def unlock_sheet(
+	sheet_id: UUID,
+	payload: UnlockSheetRequest,
+	db: AsyncSession = Depends(get_db),
+	current_user=Depends(get_current_admin),
+) -> APIResponse[dict]:
+	"""Admin-only: unlock a previously approved goal sheet back to DRAFT so the
+	employee can revise their goals. Mirrors the rejection feedback flow."""
+	await shared_goal_service.unlock_sheet(sheet_id, current_user, payload.reason, db)
+	return APIResponse.ok({"message": "Goal sheet unlocked successfully"})

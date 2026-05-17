@@ -1,670 +1,180 @@
 import { useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
-import { format, parseISO } from "date-fns";
-import { toast } from "sonner";
-import {
-  ArrowLeft,
-  Pencil,
-  Clock,
-  AlertCircle,
-  RotateCcw,
-  CheckCircle,
-  Loader2,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { GoalStatusBadge } from "@/components/goals/GoalStatusBadge";
-import { GoalTimeline } from "@/components/goals/GoalTimeline";
-import { GoalVersionDrawer } from "@/components/goals/GoalVersionDrawer";
-import { WeightageBar } from "@/components/goals/WeightageBar";
-import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
-import { UOM_TYPE_META } from "@/constants/uomTypes";
-import { formatThrustArea } from "@/utils/format.util";
-import { USERS_BY_ID } from "@/mocks/mockUsers";
-import { useSheetForReview, useApproveSheet, useReturnForRework, useInlineEditGoal } from "@/hooks/useApprovals";
-import { GoalStatus, UoMType } from "@/types/goal.types";
-import type { Goal } from "@/types/goal.types";
+import { useParams, useNavigate } from "react-router-dom";
+import { useSheetForReview, useApproveSheet, useReturnForRework } from "@/hooks/useApprovals";
+import { useAuthStore } from "@/store/authStore";
 import { ROUTES } from "@/constants/routes";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-interface InlineEditState {
-  targetValue: number | "";
-  weightage: number | "";
-  reason: string;
-}
-
-const EMPTY_EDIT: InlineEditState = { targetValue: "", weightage: "", reason: "" };
-
-function getTargetDisplay(goal: Goal): string {
-  if (goal.uomType === UoMType.ZERO) return "0 (Zero)";
-  if (goal.uomType === UoMType.TIMELINE) {
-    return goal.targetDate
-      ? format(parseISO(goal.targetDate), "dd MMM yyyy")
-      : "—";
-  }
-  const meta = UOM_TYPE_META[goal.uomType];
-  return goal.targetValue !== null
-    ? `${goal.targetValue} (${meta?.label ?? goal.uomType})`
-    : "—";
-}
-
-function getSubmissionLabel(sheet: { submittedAt?: string }): string {
-  if (!sheet.submittedAt) return "Not yet submitted";
-  return `Submitted on ${format(parseISO(sheet.submittedAt), "dd MMM yyyy")}`;
-}
-
-// ─── Non-editable cell tooltip ────────────────────────────────────────────────
-
-interface LockedCellProps {
-  readonly children: React.ReactNode;
-  readonly isEditing: boolean;
-}
-
-function LockedCell({ children, isEditing }: LockedCellProps) {
-  if (!isEditing) return <>{children}</>;
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="opacity-50 cursor-not-allowed">{children}</span>
-      </TooltipTrigger>
-      <TooltipContent side="top" className="text-xs">
-        Cannot be changed during review
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-// ─── Inline edit validation ───────────────────────────────────────────────────
-
-function validateInlineEdit(
-  editState: InlineEditState,
-  goal: Goal,
-  allGoals: Goal[]
-): string | null {
-  const needsTarget =
-    goal.uomType !== UoMType.ZERO && goal.uomType !== UoMType.TIMELINE;
-
-  if (needsTarget) {
-    const targetNum = Number(editState.targetValue);
-    if (!editState.targetValue || targetNum <= 0) {
-      return "Target must be a positive number";
-    }
-  }
-
-  const weightageNum = Number(editState.weightage);
-  if (!editState.weightage || weightageNum < 10) {
-    return "Weightage must be at least 10%";
-  }
-
-  const otherTotal = allGoals
-    .filter((g) => g.id !== goal.id)
-    .reduce((sum, g) => sum + g.weightage, 0);
-
-  if (otherTotal + weightageNum !== 100) {
-    return `Total would be ${otherTotal + weightageNum}% — must equal 100%`;
-  }
-
-  if (!editState.reason.trim()) {
-    return "Please provide a reason for this change";
-  }
-
-  return null;
-}
-
-// ─── GoalReviewPage ───────────────────────────────────────────────────────────
-
 export default function GoalReviewPage() {
-  const { sheetId = "" } = useParams<{ sheetId: string }>();
+  const { sheetId } = useParams<{ sheetId: string }>();
   const navigate = useNavigate();
-
-  const { data: sheet, isLoading } = useSheetForReview(sheetId);
+  const { currentUser } = useAuthStore();
+  const { data: sheet, isLoading } = useSheetForReview(sheetId ?? "");
   const approveSheet = useApproveSheet();
   const returnForRework = useReturnForRework();
-  const inlineEdit = useInlineEditGoal();
 
-  // Inline edit state
-  const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
-  const [editState, setEditState] = useState<InlineEditState>(EMPTY_EDIT);
-
-  // Version drawer
-  const [versionDrawer, setVersionDrawer] = useState<{ goalId: string; title: string } | null>(null);
-
-  // Dialogs
-  const [returnOpen, setReturnOpen] = useState(false);
-  const [returnReason, setReturnReason] = useState("");
-  const [approveOpen, setApproveOpen] = useState(false);
-
-  const employee = sheet ? USERS_BY_ID[sheet.userId] : undefined;
+  const [comment, setComment] = useState("");
   const goals = sheet?.goals ?? [];
+  const totalWeight = goals.reduce((sum: number, g: any) => sum + (g.weightage ?? 0), 0);
 
-  // Determine timeline status from goals
-  const timelineStatus = goals.some((g) => g.status === GoalStatus.UNDER_REVIEW)
-    ? GoalStatus.UNDER_REVIEW
-    : GoalStatus.SUBMITTED;
+  const initials = (name: string) =>
+    (name ?? "??").split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase();
 
-  // ── Inline edit handlers ─────────────────────────────────────────────────
-
-  function startEdit(goal: Goal) {
-    setEditingGoalId(goal.id);
-    setEditState({
-      targetValue: goal.targetValue ?? "",
-      weightage: goal.weightage,
-      reason: "",
-    });
+  async function handleApprove() {
+    if (!sheetId) return;
+    try {
+      await approveSheet.mutateAsync(sheetId);
+      toast.success("Goal sheet approved");
+      navigate(ROUTES.MANAGER.REVIEW(currentUser?.id ?? ""));
+    } catch {
+      toast.error("Failed to approve");
+    }
   }
 
-  function cancelEdit() {
-    setEditingGoalId(null);
-    setEditState(EMPTY_EDIT);
-  }
-
-  function handleSaveEdit() {
-    if (!editingGoalId) return;
-    const goal = goals.find((g) => g.id === editingGoalId);
-    if (!goal) return;
-
-    const error = validateInlineEdit(editState, goal, goals);
-    if (error) {
-      toast.error(error);
+  async function handleRework() {
+    if (!sheetId || !comment.trim()) {
+      toast.error("Please add a comment before returning for rework");
       return;
     }
-
-    const patch: Partial<Goal> = {
-      weightage: Number(editState.weightage),
-    };
-
-    const needsTarget =
-      goal.uomType !== UoMType.ZERO && goal.uomType !== UoMType.TIMELINE;
-    if (needsTarget) {
-      patch.targetValue = Number(editState.targetValue);
+    try {
+      await returnForRework.mutateAsync({ sheetId, reason: comment });
+      toast.success("Returned for rework");
+      navigate(ROUTES.MANAGER.REVIEW(currentUser?.id ?? ""));
+    } catch {
+      toast.error("Failed to return for rework");
     }
-
-    inlineEdit.mutate(
-      { goalId: editingGoalId, patch },
-      {
-        onSuccess: () => {
-          toast.success("Change saved · Version created");
-          cancelEdit();
-        },
-      }
-    );
   }
-
-  // ── Return for rework ─────────────────────────────────────────────────────
-
-  function handleReturnConfirm() {
-    if (returnReason.trim().length < 20) {
-      toast.error("Please provide at least 20 characters of feedback.");
-      return;
-    }
-    returnForRework.mutate(
-      { sheetId, reason: returnReason },
-      {
-        onSuccess: () => {
-          const name = employee?.fullName ?? "the employee";
-          toast.success(`Sheet returned to ${name} with your feedback.`);
-          navigate(ROUTES.MANAGER.REVIEW);
-        },
-      }
-    );
-  }
-
-  // ── Approve ──────────────────────────────────────────────────────────────
-
-  function handleApproveConfirm() {
-    approveSheet.mutate(sheetId, {
-      onSuccess: () => {
-        toast.success(`Goal sheet approved! All ${goals.length} goals are now locked.`);
-        navigate(ROUTES.MANAGER.REVIEW);
-      },
-    });
-  }
-
-  // ── Loading ──────────────────────────────────────────────────────────────
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-40 w-full rounded-xl" />
-        <Skeleton className="h-64 w-full rounded-xl" />
+      <div className="p-margin-desktop flex items-center justify-center h-64">
+        <div className="flex flex-col items-center gap-md text-on-surface-variant">
+          <span className="material-symbols-outlined text-[48px] animate-spin">progress_activity</span>
+          <p className="text-body-lg">Loading goal sheet...</p>
+        </div>
       </div>
     );
   }
 
   if (!sheet) {
     return (
-      <div className="py-20 text-center text-sm text-muted-foreground">
-        Sheet not found.{" "}
-        <Link to={ROUTES.MANAGER.REVIEW} className="text-indigo-600 hover:underline">
-          Back to queue
-        </Link>
+      <div className="p-margin-desktop text-center py-xl">
+        <span className="material-symbols-outlined text-[64px] text-on-surface-variant/40">search_off</span>
+        <p className="text-body-lg text-on-surface-variant mt-md">Goal sheet not found</p>
       </div>
     );
   }
 
-  const isSubmittedOrReview =
-    sheet.status === GoalStatus.SUBMITTED ||
-    goals.some((g) => g.status === GoalStatus.UNDER_REVIEW);
-
   return (
-    <div className="space-y-5 pb-24">
-      {/* Back + page title */}
-      <div className="flex items-center gap-3">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="gap-1.5 text-muted-foreground hover:text-foreground -ml-1"
-          onClick={() => navigate(ROUTES.MANAGER.REVIEW)}
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          Approval Queue
-        </Button>
-      </div>
-
-      {/* Employee header card */}
-      <div className="rounded-xl border bg-card p-5 space-y-4">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          {/* Left: employee info + timeline */}
-          <div className="lg:col-span-2 space-y-4">
-            <div className="flex items-start gap-4">
-              <Avatar className="h-14 w-14 shrink-0">
-                <AvatarFallback className="bg-indigo-100 text-indigo-700 text-lg font-bold">
-                  {employee?.avatarInitials ?? "??"}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <h1 className="text-lg font-semibold text-foreground">
-                  {employee?.fullName ?? "Unknown Employee"}
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  {employee?.departmentName} · {employee?.employeeCode}
-                </p>
-                <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-muted-foreground">
-                  <span>{getSubmissionLabel(sheet)}</span>
-                  <span className="text-muted-foreground/40">·</span>
-                  <span>First submission</span>
-                  {employee?.managerName && (
-                    <>
-                      <span className="text-muted-foreground/40">·</span>
-                      <span>Manager: {employee.managerName}</span>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Goal timeline strip */}
-            <div className="pt-1">
-              <GoalTimeline currentStatus={timelineStatus} />
-            </div>
+    <div className="p-margin-mobile md:p-margin-desktop max-w-4xl mx-auto space-y-lg pb-32 relative">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-md border-b border-outline-variant pb-md">
+        <div className="flex items-center gap-md">
+          <div className="w-14 h-14 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-headline-md font-bold border border-outline-variant">
+            {initials((sheet as any).employeeName ?? "")}
           </div>
-
-          {/* Right: status + weightage bar */}
-          <div className="space-y-4 flex flex-col justify-between">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-2">Sheet Status</p>
-              <GoalStatusBadge status={sheet.status} />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-2">Weightage Allocation</p>
-              <WeightageBar goals={goals} showDetails={false} />
-            </div>
+          <div>
+            <h2 className="text-headline-md text-on-surface">{(sheet as any).employeeName}'s Goal Sheet</h2>
+            <p className="text-body-md text-on-surface-variant">{(sheet as any).employeeRole ?? "—"} • {(sheet as any).cycleName ?? "—"}</p>
           </div>
         </div>
-      </div>
-
-      {/* Info banner */}
-      {isSubmittedOrReview && (
-        <div className="flex items-start gap-3 p-3.5 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800">
-          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-          <span>
-            Reviewing <strong>{employee?.fullName ?? "this employee"}&apos;s</strong> goal sheet.
-            You can edit <strong>targets</strong> and <strong>weightages</strong> before approving.
-            Title, description, and UoM type cannot be changed.
+        <div className="bg-surface-container border border-outline-variant rounded-lg p-sm flex items-center gap-md min-w-[200px]">
+          <div className="flex-1">
+            <div className="flex justify-between mb-xs">
+              <span className="text-label-md text-on-surface-variant uppercase tracking-wider">Total Weightage</span>
+              <span className={cn("text-title-md font-bold", totalWeight === 100 ? "text-primary" : "text-error")}>
+                {totalWeight}%
+              </span>
+            </div>
+            <div className="w-full bg-surface-variant rounded-full h-1.5">
+              <div
+                className={cn("h-1.5 rounded-full", totalWeight === 100 ? "bg-primary" : "bg-error")}
+                style={{ width: `${Math.min(totalWeight, 100)}%` }}
+              />
+            </div>
+          </div>
+          <span className={cn("material-symbols-outlined", totalWeight === 100 ? "text-tertiary-container" : "text-error")}>
+            {totalWeight === 100 ? "check_circle" : "warning"}
           </span>
         </div>
-      )}
-
-      {/* Goals table */}
-      <div className="rounded-xl border overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-muted/40 hover:bg-muted/40">
-              <TableHead className="text-xs font-semibold w-10 text-center">#</TableHead>
-              <TableHead className="text-xs font-semibold">Goal Title</TableHead>
-              <TableHead className="text-xs font-semibold hidden lg:table-cell">Thrust Area</TableHead>
-              <TableHead className="text-xs font-semibold hidden md:table-cell">UoM</TableHead>
-              <TableHead className="text-xs font-semibold">Target</TableHead>
-              <TableHead className="text-xs font-semibold w-24">Weightage</TableHead>
-              <TableHead className="text-xs font-semibold hidden sm:table-cell">Status</TableHead>
-              <TableHead className="text-xs font-semibold w-20 text-center">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {goals.map((goal, idx) => {
-              const isEditing = editingGoalId === goal.id;
-              const uomMeta = UOM_TYPE_META[goal.uomType];
-              const needsTarget =
-                goal.uomType !== UoMType.ZERO && goal.uomType !== UoMType.TIMELINE;
-
-              return (
-                <>
-                  <TableRow
-                    key={goal.id}
-                    className={cn(isEditing && "bg-indigo-50/40")}
-                  >
-                    {/* # */}
-                    <TableCell className="text-center text-xs text-muted-foreground font-mono">
-                      {idx + 1}
-                    </TableCell>
-
-                    {/* Goal Title */}
-                    <TableCell className="max-w-[200px]">
-                      <LockedCell isEditing={isEditing}>
-                        <div>
-                          <p className="text-xs font-semibold text-foreground leading-tight">
-                            {goal.title}
-                          </p>
-                          {goal.description && (
-                            <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-1">
-                              {goal.description}
-                            </p>
-                          )}
-                          {goal.isShared && (
-                            <Badge className="mt-1 text-[9px] h-3.5 px-1 bg-amber-50 text-amber-700 border border-amber-200">
-                              Shared KPI
-                            </Badge>
-                          )}
-                        </div>
-                      </LockedCell>
-                    </TableCell>
-
-                    {/* Thrust Area */}
-                    <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">
-                      <LockedCell isEditing={isEditing}>
-                        {formatThrustArea(goal.thrustArea)}
-                      </LockedCell>
-                    </TableCell>
-
-                    {/* UoM */}
-                    <TableCell className="hidden md:table-cell">
-                      <LockedCell isEditing={isEditing}>
-                        <Badge variant="outline" className="text-[10px] h-5 px-1.5 font-normal">
-                          {uomMeta?.label ?? goal.uomType}
-                        </Badge>
-                      </LockedCell>
-                    </TableCell>
-
-                    {/* Target */}
-                    <TableCell>
-                      {isEditing && needsTarget ? (
-                        <Input
-                          type="number"
-                          min={0}
-                          step="any"
-                          value={editState.targetValue}
-                          onChange={(e) =>
-                            setEditState((s) => ({
-                              ...s,
-                              targetValue: e.target.value === "" ? "" : Number(e.target.value),
-                            }))
-                          }
-                          className="h-7 w-24 text-xs"
-                        />
-                      ) : (
-                        <span className="text-xs">{getTargetDisplay(goal)}</span>
-                      )}
-                    </TableCell>
-
-                    {/* Weightage */}
-                    <TableCell>
-                      {isEditing ? (
-                        <Input
-                          type="number"
-                          min={10}
-                          max={100}
-                          step={5}
-                          value={editState.weightage}
-                          onChange={(e) =>
-                            setEditState((s) => ({
-                              ...s,
-                              weightage: e.target.value === "" ? "" : Number(e.target.value),
-                            }))
-                          }
-                          className="h-7 w-20 text-xs"
-                        />
-                      ) : (
-                        <Badge
-                          variant="outline"
-                          className="text-xs font-semibold bg-indigo-50 text-indigo-600 border-indigo-200"
-                        >
-                          {goal.weightage}%
-                        </Badge>
-                      )}
-                    </TableCell>
-
-                    {/* Status */}
-                    <TableCell className="hidden sm:table-cell">
-                      <GoalStatusBadge status={goal.status} size="sm" />
-                    </TableCell>
-
-                    {/* Actions */}
-                    <TableCell>
-                      {isEditing ? (
-                        <div className="flex items-center gap-1">
-                          <Button
-                            size="sm"
-                            className="h-6 px-2 text-[10px]"
-                            onClick={handleSaveEdit}
-                            disabled={inlineEdit.isPending}
-                          >
-                            {inlineEdit.isPending ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              "Save"
-                            )}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 px-2 text-[10px]"
-                            onClick={cancelEdit}
-                            disabled={inlineEdit.isPending}
-                          >
-                            ✕
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1">
-                          {isSubmittedOrReview && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                              title="Edit target / weightage"
-                              onClick={() => startEdit(goal)}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                            title="View version history"
-                            onClick={() =>
-                              setVersionDrawer({ goalId: goal.id, title: goal.title })
-                            }
-                          >
-                            <Clock className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      )}
-                    </TableCell>
-                  </TableRow>
-
-                  {/* Reason row — shown only in edit mode */}
-                  {isEditing && (
-                    <TableRow key={`${goal.id}-reason`} className="bg-indigo-50/40">
-                      <TableCell colSpan={8} className="pt-0 pb-3 px-4">
-                        <div className="flex items-center gap-2">
-                          <Input
-                            placeholder="Reason for change (required) *"
-                            value={editState.reason}
-                            onChange={(e) =>
-                              setEditState((s) => ({ ...s, reason: e.target.value }))
-                            }
-                            className="flex-1 h-7 text-xs"
-                          />
-                          <span
-                            className={cn(
-                              "text-[10px] tabular-nums shrink-0",
-                              editState.reason.length < 5
-                                ? "text-muted-foreground"
-                                : "text-emerald-600"
-                            )}
-                          >
-                            {editState.reason.length} chars
-                          </span>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </>
-              );
-            })}
-          </TableBody>
-        </Table>
       </div>
 
-      {/* Sticky bottom action bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 border-t bg-background/95 backdrop-blur-sm px-6 py-3.5">
-        <div className="max-w-screen-xl mx-auto flex items-center justify-between gap-4">
-          {/* Return for rework */}
-          <Button
-            variant="outline"
-            className="border-amber-300 text-amber-700 hover:bg-amber-50 hover:text-amber-800 gap-2"
-            onClick={() => {
-              setReturnReason("");
-              setReturnOpen(true);
-            }}
-            disabled={!isSubmittedOrReview || returnForRework.isPending || approveSheet.isPending}
-          >
-            <RotateCcw className="h-4 w-4" />
-            Return for Rework
-          </Button>
+      {/* Goals */}
+      <div className="space-y-md">
+        {goals.length === 0 ? (
+          <div className="text-center py-xl text-on-surface-variant">No goals in this sheet</div>
+        ) : (
+          goals.map((goal: any) => (
+            <article key={goal.id} className={cn(
+              "bg-surface border border-outline-variant rounded-lg p-lg shadow-level-1 hover:shadow-level-2 transition-shadow",
+              !goal.isAligned && "border-l-4 border-l-error"
+            )}>
+              <div className="flex justify-between items-start mb-sm">
+                <span className="bg-surface-container text-on-surface-variant text-label-md px-2 py-1 rounded border border-outline-variant/50">
+                  {goal.uom ?? "General"}
+                </span>
+                <span className={cn(
+                  "text-label-md px-2 py-1 rounded flex items-center gap-xs",
+                  goal.isAligned !== false
+                    ? "bg-tertiary-container/10 text-tertiary"
+                    : "bg-error-container text-on-error-container"
+                )}>
+                  <span className="material-symbols-outlined text-[14px]">
+                    {goal.isAligned !== false ? "verified" : "warning"}
+                  </span>
+                  {goal.isAligned !== false ? "Department Aligned" : "Out of Alignment"}
+                </span>
+              </div>
+              <h3 className="text-title-lg text-on-surface mb-md">{goal.title}</h3>
+              {goal.isAligned === false && goal.alignmentNote && (
+                <p className="text-body-md text-error mb-md">{goal.alignmentNote}</p>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-md pt-md border-t border-outline-variant">
+                <div>
+                  <label className="text-label-md text-on-surface-variant block mb-xs">Target Measure</label>
+                  <p className="text-body-md text-on-surface">{goal.targetValue ?? "—"}</p>
+                </div>
+                <div className="border-l border-outline-variant/50 pl-md hidden md:block">
+                  <label className="text-label-md text-on-surface-variant block mb-xs">Weightage</label>
+                  <p className="text-title-md text-on-surface">{goal.weightage ?? 0}%</p>
+                </div>
+              </div>
+            </article>
+          ))
+        )}
+      </div>
 
-          {/* Approve */}
-          <Button
-            size="lg"
-            className="gap-2 bg-indigo-600 hover:bg-indigo-700"
-            onClick={() => setApproveOpen(true)}
-            disabled={!isSubmittedOrReview || approveSheet.isPending || returnForRework.isPending}
-          >
-            <CheckCircle className="h-4 w-4" />
-            Approve Goal Sheet
-          </Button>
+      {/* Sticky action bar */}
+      <div className="fixed bottom-0 left-0 right-0 md:left-64 bg-surface border-t border-outline-variant p-lg shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20">
+        <div className="max-w-4xl mx-auto flex flex-col gap-sm">
+          <textarea
+            rows={2}
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder="Add notes for rework (required to return)..."
+            className="w-full bg-surface-container-lowest border border-outline-variant rounded-md text-body-md text-on-surface p-sm focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all resize-none"
+          />
+          <div className="flex justify-end gap-md">
+            <button
+              onClick={handleRework}
+              disabled={!comment.trim() || returnForRework.isPending}
+              className="px-xl py-2 rounded text-title-md border border-outline-variant text-on-surface bg-surface hover:bg-surface-container-low transition-colors flex items-center gap-sm active:scale-95 disabled:opacity-50"
+            >
+              <span className="material-symbols-outlined text-[20px]">undo</span>
+              Return for Rework
+            </button>
+            <button
+              onClick={handleApprove}
+              disabled={approveSheet.isPending}
+              className="px-xl py-2 rounded text-title-md text-on-primary bg-primary hover:bg-primary-container transition-colors shadow-level-1 flex items-center gap-sm active:scale-95 border-t border-white/20 disabled:opacity-50"
+            >
+              <span className="material-symbols-outlined text-[20px]">check</span>
+              Approve Goals
+            </button>
+          </div>
         </div>
       </div>
-
-      {/* Return for Rework dialog */}
-      <Dialog open={returnOpen} onOpenChange={setReturnOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Return for Rework</DialogTitle>
-            <DialogDescription>
-              Explain what needs to change. The employee will receive your feedback and can re-submit.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-2">
-            <Textarea
-              placeholder="Explain what needs to change…"
-              rows={4}
-              value={returnReason}
-              onChange={(e) => setReturnReason(e.target.value)}
-              className="resize-none text-sm"
-            />
-            <div className="flex items-center justify-between text-[11px]">
-              <span className={cn(
-                returnReason.length >= 20 ? "text-emerald-600" : "text-muted-foreground"
-              )}>
-                {returnReason.length} / 20 minimum characters
-              </span>
-              {returnReason.length > 0 && returnReason.length < 20 && (
-                <span className="text-amber-600">Need {20 - returnReason.length} more</span>
-              )}
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setReturnOpen(false)}
-              disabled={returnForRework.isPending}
-            >
-              Cancel
-            </Button>
-            <Button
-              className="bg-amber-500 hover:bg-amber-600 text-white gap-2"
-              onClick={handleReturnConfirm}
-              disabled={returnReason.trim().length < 20 || returnForRework.isPending}
-            >
-              {returnForRework.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-              Return to Employee
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Approve confirm dialog */}
-      <ConfirmDialog
-        open={approveOpen}
-        onOpenChange={setApproveOpen}
-        title="Approve Goal Sheet"
-        description={`You are approving all ${goals.length} goal${goals.length !== 1 ? "s" : ""} for ${employee?.fullName ?? "this employee"}. They will be locked immediately and cannot be edited without Admin intervention.`}
-        confirmLabel="Approve & Lock Goals"
-        onConfirm={handleApproveConfirm}
-        isLoading={approveSheet.isPending}
-      />
-
-      {/* Version history drawer */}
-      {versionDrawer && (
-        <GoalVersionDrawer
-          open={Boolean(versionDrawer)}
-          onClose={() => setVersionDrawer(null)}
-          goalId={versionDrawer.goalId}
-          goalTitle={versionDrawer.title}
-        />
-      )}
     </div>
   );
 }

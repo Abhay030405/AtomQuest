@@ -4,6 +4,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_admin, get_current_manager, get_current_user, get_db, get_pagination
@@ -83,18 +84,31 @@ async def create_user(
 	current_user=Depends(get_current_admin),
 ) -> APIResponse[UserResponse]:
 	repo = UserRepository(db)
-	user = await repo.create(
-		{
-			"email": payload.email,
-			"hashed_password": hash_password(payload.password),
-			"full_name": payload.full_name,
-			"role": payload.role,
-			"department_id": payload.department_id,
-			"employee_code": payload.employee_code,
-			"manager_id": payload.manager_id,
-			"is_active": True,
-		}
-	)
+	# employee_code is server-generated and globally unique. Retry on the rare
+	# race where two same-role users are created concurrently and collide on
+	# the unique constraint; re-raise any other integrity error unchanged.
+	user = None
+	for _ in range(5):
+		try:
+			user = await repo.create(
+				{
+					"email": payload.email,
+					"hashed_password": hash_password(payload.password),
+					"full_name": payload.full_name,
+					"role": payload.role,
+					"department_id": payload.department_id,
+					"employee_code": await repo.next_employee_code(payload.role),
+					"manager_id": payload.manager_id,
+					"is_active": True,
+				}
+			)
+			break
+		except IntegrityError as exc:
+			if "employee_code" not in str(exc.orig).lower():
+				raise
+			await db.rollback()
+	if user is None:
+		raise IntegrityError("Could not allocate a unique employee_code", None, None)
 
 	await audit_service.log_create("users", user.id, current_user, db)
 	await db.commit()

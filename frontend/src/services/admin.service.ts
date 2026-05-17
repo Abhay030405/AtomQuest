@@ -1,11 +1,50 @@
 import { db } from "./_mockDB";
 import { mockRequestOrThrow } from "./api.client";
+import { apiClient } from "./api-client";
 import { GoalStatus } from "@/types/goal.types";
-import type { CycleConfig } from "@/types/cycle.types";
-import type { AuditLog } from "@/types/audit.types";
-import type { AuditAction } from "@/types/audit.types";
+import type { APIResponse, PaginatedResponse } from "@/types/api.types";
+import type { CycleConfig, CyclePhase } from "@/types/cycle.types";
+import type { AuditLog, AuditAction } from "@/types/audit.types";
 import type { Goal } from "@/types/goal.types";
-import type { PaginatedResponse } from "@/types/api.types";
+
+// ─── Cycle API DTOs ───────────────────────────────────────────────────────────
+
+interface CycleApi {
+  id: string;
+  cycle_name: string;
+  phase: string;
+  window_open: string;
+  window_close: string;
+  is_active: boolean;
+  created_by: string | null;
+  created_at: string;
+}
+
+function mapCycle(c: CycleApi): CycleConfig {
+  return {
+    id: c.id,
+    cycleName: c.cycle_name,
+    phase: c.phase as CyclePhase,
+    windowOpen: c.window_open,
+    windowClose: c.window_close,
+    isActive: c.is_active,
+    createdBy: c.created_by ?? "",
+  };
+}
+
+async function unwrap<T>(resp: APIResponse<T>): Promise<T> {
+  if (!resp.success || resp.data === undefined || resp.data === null) {
+    throw new Error(resp.error?.message ?? "Request failed");
+  }
+  return resp.data;
+}
+
+export interface CreateCycleInput {
+  cycleName: string;
+  phase: CyclePhase;
+  windowOpen: string;
+  windowClose: string;
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,30 +74,43 @@ function now() {
 }
 
 export const adminService = {
-  getCycleConfigs: () =>
-    mockRequestOrThrow(() => [...db.cycleConfigs]),
+  getCycleConfigs: async (): Promise<CycleConfig[]> => {
+    const resp = await apiClient.get<APIResponse<CycleApi[]>>("/v1/admin/cycles");
+    const data = await unwrap(resp);
+    return data.map(mapCycle);
+  },
 
-  updateCycleConfig: (id: string, patch: Partial<CycleConfig>) =>
-    mockRequestOrThrow(() => {
-      const idx = db.cycleConfigs.findIndex((c) => c.id === id);
-      if (idx === -1) throw new Error(`Cycle ${id} not found`);
-      db.cycleConfigs[idx] = { ...db.cycleConfigs[idx], ...patch };
-      return db.cycleConfigs[idx];
-    }),
+  createCycleConfig: async (input: CreateCycleInput): Promise<CycleConfig> => {
+    const resp = await apiClient.post<APIResponse<CycleApi>>("/v1/admin/cycles", {
+      cycle_name: input.cycleName,
+      phase: input.phase,
+      window_open: input.windowOpen,
+      window_close: input.windowClose,
+    });
+    return mapCycle(await unwrap(resp));
+  },
 
-  activateCycleWindow: (cycleId: string, windowOpen: string, windowClose: string) =>
-    mockRequestOrThrow(() => {
-      db.cycleConfigs.forEach((c) => { c.isActive = false; });
-      const idx = db.cycleConfigs.findIndex((c) => c.id === cycleId);
-      if (idx === -1) throw new Error(`Cycle ${cycleId} not found`);
-      db.cycleConfigs[idx] = {
-        ...db.cycleConfigs[idx],
-        isActive: true,
-        windowOpen,
-        windowClose,
-      };
-      return db.cycleConfigs[idx];
-    }),
+  updateCycleConfig: async (id: string, patch: Partial<CycleConfig>): Promise<CycleConfig> => {
+    const body: Record<string, unknown> = {};
+    if (patch.cycleName !== undefined) body.cycle_name = patch.cycleName;
+    if (patch.phase !== undefined) body.phase = patch.phase;
+    if (patch.windowOpen !== undefined) body.window_open = patch.windowOpen;
+    if (patch.windowClose !== undefined) body.window_close = patch.windowClose;
+    const resp = await apiClient.patch<APIResponse<CycleApi>>(`/v1/admin/cycles/${id}`, body);
+    return mapCycle(await unwrap(resp));
+  },
+
+  activateCycleWindow: async (
+    cycleId: string,
+    _windowOpen: string,
+    _windowClose: string,
+  ): Promise<CycleConfig> => {
+    const resp = await apiClient.post<APIResponse<CycleApi>>(
+      `/v1/admin/cycles/${cycleId}/activate`,
+      {},
+    );
+    return mapCycle(await unwrap(resp));
+  },
 
   pushSharedGoal: (sourceGoalId: string, targetUserIds: string[], cycleId: string) =>
     mockRequestOrThrow(() => {
@@ -94,6 +146,17 @@ export const adminService = {
       db.goals[idx] = updated;
       return updated;
     }),
+
+  unlockSheet: async (sheetId: string, reason: string): Promise<{ message: string }> => {
+    const resp = await apiClient.post<APIResponse<{ message: string }>>(
+      `/v1/admin/sheets/${sheetId}/unlock`,
+      { reason }
+    );
+    if (!resp.success) {
+      throw new Error(resp.error?.message ?? "Failed to unlock goal sheet");
+    }
+    return resp.data ?? { message: "Goal sheet unlocked" };
+  },
 
   getAuditLog: (query: AuditLogQuery = {}): Promise<PaginatedResponse<AuditLog>> =>
     mockRequestOrThrow(() => {

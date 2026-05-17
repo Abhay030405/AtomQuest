@@ -3,20 +3,23 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime, timezone
 
-from app.core.constants import GoalEventType, GoalSheetStatus, GoalStatus, NotificationType, Permission, UserRole
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.core.constants import GoalSheetStatus, GoalStatus, Permission, UserRole
 from app.core.exceptions import ForbiddenError, GoalCountError, GoalLockedError
+from app.events import goal_events as ge
+from app.events.event_bus import event_bus
 from app.models.goal import Goal
-from app.models.goal_event import GoalEvent
 from app.models.goal_sheet import GoalSheet
 from app.models.shared_goal import SharedGoal
 from app.models.user import User
 from app.repositories.goal_repository import GoalRepository
 from app.repositories.user_repository import UserRepository
-from app.services.audit_service import audit_service
 from app.services.goal_state_machine import goal_state_machine
-from app.services.notification_service import notification_service
 from app.services.rbac_service import rbac_service
 from app.services.version_service import version_service
 
@@ -89,35 +92,34 @@ class SharedGoalService:
 					pushed_by=admin.id,
 				)
 			)
-			db.add(
-				GoalEvent(
-					goal_id=goal.id,
-					event_type=GoalEventType.SHARED_GOAL_RECEIVED,
-					actor_id=admin.id,
-					payload=None,
-				)
-			)
-
-			await notification_service.create_in_app(
-				recipient.id,
-				NotificationType.SHARED_GOAL_RECEIVED,
-				"Shared KPI added",
-				"A shared departmental KPI has been added to your goal sheet.",
+			await event_bus.publish(
+				ge.SHARED_GOAL_RECEIVED,
+				{
+					"goal_id": goal.id,
+					"recipient_id": recipient.id,
+					"source_goal_id": master_goal.id,
+					"actor_id": admin.id,
+					"actor_role": admin.role,
+					"payload": {"source_goal_id": str(master_goal.id)},
+				},
 				db,
-				related_goal_id=goal.id,
 			)
 			created_goals.append(goal)
 
-		db.add(
-			GoalEvent(
-				goal_id=master_goal.id,
-				event_type=GoalEventType.SHARED_GOAL_PUSHED,
-				actor_id=admin.id,
-				payload={"recipient_ids": [g.user_id for g in created_goals]},
-			)
+		await event_bus.publish(
+			ge.SHARED_GOAL_PUSHED,
+			{
+				"goal_id": master_goal.id,
+				"source_goal_id": master_goal.id,
+				"admin_id": admin.id,
+				"recipient_ids": [g.user_id for g in created_goals],
+				"actor_id": admin.id,
+				"actor_role": admin.role,
+				"payload": {"recipient_ids": [str(g.user_id) for g in created_goals]},
+			},
+			db,
 		)
 
-		await audit_service.log_create("goals", master_goal.id, admin, db)
 		await db.commit()
 		return created_goals
 
@@ -131,37 +133,84 @@ class SharedGoalService:
 
 		goal_state_machine.transition(goal, GoalStatus.UNDER_REVIEW, admin)
 		await version_service.snapshot_goal(goal, admin, f"Admin unlock: {reason}", db)
-		db.add(
-			GoalEvent(
-				goal_id=goal.id,
-				event_type=GoalEventType.GOAL_UNLOCKED,
-				actor_id=admin.id,
-				payload={"reason": reason, "unlocked_by": str(admin.id)},
-			)
+
+		# Load owner name for the notification message (handler does an extra
+		# query for the manager lookup, but the owner name we already need here).
+		owner = await UserRepository(db).get_active_by_id(goal.user_id) if goal.user_id else None
+		owner_name = owner.full_name if owner else ""
+
+		await event_bus.publish(
+			ge.GOAL_UNLOCKED,
+			{
+				"goal_id": goal.id,
+				"user_id": goal.user_id,
+				"user_name": owner_name,
+				"admin_id": admin.id,
+				"admin_name": admin.full_name,
+				"reason": reason,
+				"actor_id": admin.id,
+				"actor_role": admin.role,
+				"payload": {"reason": reason, "unlocked_by": str(admin.id)},
+			},
+			db,
 		)
-		await audit_service.log_update("goals", goal.id, admin, "status", "locked", "under_review", db)
-		if goal.user_id:
-			await notification_service.create_in_app(
-				goal.user_id,
-				NotificationType.GOAL_UNLOCKED,
-				"Goal unlocked",
-				f"Your goal was unlocked by {admin.full_name}: {reason}",
-				db,
-				related_goal_id=goal.id,
-			)
-		goal_owner = await UserRepository(db).get_active_by_id(goal.user_id)
-		if goal_owner and goal_owner.manager_id:
-			await notification_service.create_in_app(
-				goal_owner.manager_id,
-				NotificationType.GOAL_UNLOCKED,
-				"Goal unlocked",
-				f"{goal_owner.full_name}'s goal was unlocked by {admin.full_name}: {reason}",
-				db,
-				related_goal_id=goal.id,
-			)
 		await db.commit()
 		await db.refresh(goal)
 		return goal
+
+	async def unlock_sheet(self, sheet_id: UUID, admin: User, reason: str, db: AsyncSession) -> GoalSheet:
+		"""Admin-only: unlock a previously approved goal sheet and return it to DRAFT
+		so the employee can revise their goals mid-cycle. All LOCKED goals are
+		transitioned LOCKED → UNDER_REVIEW → DRAFT.
+		"""
+		if not rbac_service.has_permission(admin.role, Permission.UNLOCK_GOAL):
+			raise ForbiddenError()
+
+		stmt = (
+			select(GoalSheet)
+			.options(selectinload(GoalSheet.goals), selectinload(GoalSheet.owner))
+			.where(GoalSheet.id == sheet_id, GoalSheet.is_deleted.is_(False))
+		)
+		result = await db.execute(stmt)
+		sheet = result.scalar_one_or_none()
+		if sheet is None:
+			raise ForbiddenError()
+		if sheet.status != GoalSheetStatus.APPROVED:
+			raise GoalLockedError()
+
+		for goal in sheet.goals:
+			if goal.status != GoalStatus.LOCKED:
+				continue
+			# LOCKED → UNDER_REVIEW (UNLOCK_GOAL) → DRAFT (RETURN_FOR_REWORK)
+			goal_state_machine.transition(goal, GoalStatus.UNDER_REVIEW, admin)
+			goal_state_machine.transition(goal, GoalStatus.DRAFT, admin)
+			goal.locked_at = None
+			goal.locked_by = None
+			await version_service.snapshot_goal(goal, admin, f"Admin unlock: {reason}", db)
+			await event_bus.publish(
+				ge.GOAL_UNLOCKED,
+				{
+					"goal_id": goal.id,
+					"user_id": goal.user_id,
+					"user_name": sheet.owner.full_name if sheet.owner else "",
+					"admin_id": admin.id,
+					"admin_name": admin.full_name,
+					"reason": reason,
+					"actor_id": admin.id,
+					"actor_role": admin.role,
+					"payload": {"reason": reason, "unlocked_by": str(admin.id), "goal_sheet_id": str(sheet.id)},
+				},
+				db,
+			)
+
+		sheet.status = GoalSheetStatus.DRAFT
+		sheet.approved_at = None
+		sheet.approved_by = None
+		sheet.returned_count += 1
+
+		await db.commit()
+		await db.refresh(sheet)
+		return sheet
 
 	async def _create_sheet(self, user_id: UUID, cycle_id: UUID, db: AsyncSession) -> GoalSheet:
 		sheet = GoalSheet(user_id=user_id, cycle_id=cycle_id, status=GoalSheetStatus.DRAFT, returned_count=0)

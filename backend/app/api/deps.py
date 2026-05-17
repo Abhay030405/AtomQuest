@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator, Callable
 from uuid import UUID, uuid4
 
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -71,11 +71,14 @@ def get_current_admin(current_user=Depends(get_current_user)):
 	return current_user
 
 
-def get_pagination(page: int = 1, page_size: int = 20, max_size: int = 100) -> PaginationParams:
+def get_pagination(page: int = 1, page_size: int = 20, max_size: int = 500) -> PaginationParams:
 	if page < 1:
-		raise ValueError("page must be >= 1")
+		raise HTTPException(status_code=400, detail="page must be >= 1")
 	if page_size < 1 or page_size > max_size:
-		raise ValueError("page_size must be between 1 and max_size")
+		raise HTTPException(
+			status_code=400,
+			detail=f"page_size must be between 1 and {max_size}",
+		)
 	skip = (page - 1) * page_size
 	return PaginationParams(skip=skip, limit=page_size, page=page, page_size=page_size)
 

@@ -62,19 +62,37 @@ class AuditService:
 	async def log_goal_changes(
 		self,
 		old_goal: dict[str, Any],
-		new_goal: Goal,
+		new_goal: Goal | dict[str, Any],
 		actor: User,
 		db: AsyncSession,
 		request_id: str | None = None,
 	) -> None:
+		# The caller MUST pass either a pre-computed dict for ``new_goal`` or a Goal
+		# instance whose attributes are still in-memory (i.e. before any db.flush()).
+		# Once the session flushes, server-managed columns like ``updated_at`` get
+		# expired, and reading them via getattr() would trigger a sync lazy-load
+		# from inside the async session and raise MissingGreenlet.
+		if isinstance(new_goal, dict):
+			new_snapshot: dict[str, Any] = new_goal
+			record_id = new_goal.get("id")
+		else:
+			new_snapshot = {
+				column.name: getattr(new_goal, column.name)
+				for column in new_goal.__table__.columns
+			}
+			record_id = new_goal.id
+
+		if record_id is None:
+			return
+
 		for field, old_value in old_goal.items():
-			if not hasattr(new_goal, field):
+			if field not in new_snapshot:
 				continue
-			new_value = getattr(new_goal, field)
+			new_value = new_snapshot[field]
 			if old_value != new_value:
 				await self.log_update(
 					"goals",
-					new_goal.id,
+					record_id,
 					actor,
 					field,
 					old_value,

@@ -39,6 +39,9 @@ class CycleService:
 		cycle = await self.get_active_window(db)
 		if cycle is None:
 			return {
+				"cycle_id": None,
+				"cycle_name": None,
+				"is_active": False,
 				"is_open": False,
 				"phase": None,
 				"days_remaining": 0,
@@ -51,6 +54,9 @@ class CycleService:
 		days_remaining = (cycle.window_close - now).days
 		message = "Goal window is open" if is_open else "Goal window is closed"
 		return {
+			"cycle_id": cycle.id,
+			"cycle_name": cycle.cycle_name,
+			"is_active": cycle.is_active,
 			"is_open": is_open,
 			"phase": cycle.phase,
 			"days_remaining": days_remaining,
