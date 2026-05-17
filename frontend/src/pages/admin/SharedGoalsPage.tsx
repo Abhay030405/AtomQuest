@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -10,15 +10,16 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { usePushSharedGoal } from "@/hooks/useAdmin";
-import { mockUsers } from "@/mocks/mockUsers";
+import { usePushSharedGoal, useAdminPushedSharedGoals } from "@/hooks/useAdmin";
+import { useAllUsers } from "@/hooks/useApprovals";
+import { useCycleStore } from "@/store/cycleStore";
 import { ThrustArea, UoMType } from "@/types/goal.types";
 import { UserRole } from "@/types/user.types";
+import type { User } from "@/types/user.types";
+import type { PushedSharedGoal } from "@/services/admin.service";
 import { UOM_TYPE_META } from "@/constants/uomTypes";
 import { formatThrustArea } from "@/utils/format.util";
 import { cn } from "@/lib/utils";
-
-const CYCLE_ID = "cycle-fy2026";
 
 const kpiSchema = z
   .object({
@@ -28,7 +29,7 @@ const kpiSchema = z
     uomType: z.nativeEnum(UoMType),
     targetValue: z.coerce.number().min(0).optional(),
     targetDate: z.string().optional(),
-    weightage: z.coerce.number().min(1).max(100),
+    weightage: z.coerce.number().min(10, "Min 10").max(90, "Max 90"),
   })
   .superRefine((val, ctx) => {
     if (val.uomType === UoMType.TIMELINE && !val.targetDate) {
@@ -224,7 +225,7 @@ function Step1({ onNext }: { onNext: (data: KpiFormData) => void }) {
               <FormItem>
                 <FormLabel className="text-label-md text-on-surface">Weightage (%) *</FormLabel>
                 <FormControl>
-                  <input type="number" min={1} max={100} {...field} className={INPUT_CLS} />
+                  <input type="number" min={10} max={90} {...field} className={INPUT_CLS} />
                 </FormControl>
                 <FormMessage className="text-label-md text-error" />
               </FormItem>
@@ -245,9 +246,8 @@ function Step1({ onNext }: { onNext: (data: KpiFormData) => void }) {
 
 // ─── Step 2: Select Recipients ────────────────────────────────────────────────
 
-const employees = mockUsers.filter((u) => u.role === UserRole.EMPLOYEE);
-
-function Step2({ selected, onChange, onBack, onNext }: {
+function Step2({ employees, selected, onChange, onBack, onNext }: {
+  employees: User[];
   selected: string[];
   onChange: (ids: string[]) => void;
   onBack: () => void;
@@ -270,8 +270,13 @@ function Step2({ selected, onChange, onBack, onNext }: {
         </button>
       </div>
 
-      <div className="space-y-sm">
-        {employees.map((user) => {
+      {employees.length === 0 ? (
+        <div className="text-body-md text-on-surface-variant border border-dashed border-outline-variant rounded-lg p-lg text-center">
+          No employees found.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-sm">
+          {employees.map((user) => {
           const isSelected = selected.includes(user.id);
           const initials = user.fullName.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase();
           return (
@@ -295,7 +300,10 @@ function Step2({ selected, onChange, onBack, onNext }: {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-body-md text-on-surface font-medium">{user.fullName}</p>
-                <p className="text-label-md text-on-surface-variant">{user.departmentName} · {user.employeeCode}</p>
+                <p className="text-label-md text-on-surface-variant">
+                  {user.departmentName} · {user.employeeCode}
+                  {user.managerName ? ` (Manager: ${user.managerName})` : ""}
+                </p>
               </div>
               {isSelected && (
                 <span className="material-symbols-outlined text-primary text-[18px] shrink-0">check_circle</span>
@@ -303,7 +311,8 @@ function Step2({ selected, onChange, onBack, onNext }: {
             </label>
           );
         })}
-      </div>
+        </div>
+      )}
 
       <div className="flex items-center justify-between pt-sm">
         <button onClick={onBack} className="bg-surface-container-lowest border border-outline-variant text-on-surface text-label-md px-md py-sm rounded-lg hover:bg-surface-container-low transition-colors flex items-center gap-xs">
@@ -325,7 +334,8 @@ function Step2({ selected, onChange, onBack, onNext }: {
 
 // ─── Step 3: Review & Push ────────────────────────────────────────────────────
 
-function Step3({ kpiData, selectedUserIds, isPending, onBack, onPush }: {
+function Step3({ employees, kpiData, selectedUserIds, isPending, onBack, onPush }: {
+  employees: User[];
   kpiData: KpiFormData;
   selectedUserIds: string[];
   isPending: boolean;
@@ -428,6 +438,12 @@ export default function SharedGoalsPage() {
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
 
   const push = usePushSharedGoal();
+  const { data: allUsers, isLoading: usersLoading } = useAllUsers();
+  const activeCycleId = useCycleStore((s) => s.activeWindow?.id);
+  const employees = useMemo<User[]>(
+    () => (allUsers ?? []).filter((u) => u.role === UserRole.EMPLOYEE && u.isActive),
+    [allUsers]
+  );
 
   function handleStep1(data: KpiFormData) {
     setKpiData(data);
@@ -437,7 +453,11 @@ export default function SharedGoalsPage() {
   function handlePush() {
     if (!kpiData) return;
     push.mutate(
-      { kpiData: { ...kpiData, targetValue: kpiData.targetValue ?? null }, targetUserIds: selectedUserIds, cycleId: CYCLE_ID },
+      {
+        kpiData: { ...kpiData, targetValue: kpiData.targetValue ?? null },
+        targetUserIds: selectedUserIds,
+        cycleId: activeCycleId,
+      },
       {
         onSuccess: () => {
           setStep(1);
@@ -462,36 +482,219 @@ export default function SharedGoalsPage() {
       </div>
 
       {/* Wizard card */}
-      <div className="bg-surface-container-lowest border border-outline-variant rounded-xl shadow-level-1 p-xl max-w-2xl space-y-xl">
-        {/* Step indicator */}
-        <StepIndicator step={step} />
-
-        {/* Step label */}
-        <div className="flex items-center gap-sm">
-          <span className="material-symbols-outlined text-primary">{STEP_ICONS[step]}</span>
-          <p className="text-title-md text-on-surface">{STEP_LABELS[step]}</p>
+      <div className="bg-surface-container-lowest border border-outline-variant rounded-xl shadow-level-1 overflow-hidden">
+        {/* Card header band */}
+        <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-b border-outline-variant px-xl py-lg">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-md">
+            <div className="flex items-center gap-md">
+              <div className="h-10 w-10 rounded-lg bg-primary text-on-primary flex items-center justify-center shadow-level-1">
+                <span className="material-symbols-outlined text-[22px]">{STEP_ICONS[step]}</span>
+              </div>
+              <div>
+                <p className="text-label-md text-on-surface-variant uppercase tracking-wide">Step {step} of 3</p>
+                <p className="text-title-lg text-on-surface font-semibold">{STEP_LABELS[step]}</p>
+              </div>
+            </div>
+            <StepIndicator step={step} />
+          </div>
         </div>
 
-        {/* Step content */}
-        {step === 1 && <Step1 onNext={handleStep1} />}
+        {/* Card body */}
+        <div className="p-xl space-y-lg">
+          {!activeCycleId && (
+            <div className="text-body-md text-on-error-container bg-error-container/30 border border-error/30 rounded-lg px-md py-sm">
+              No active cycle window. Activate a cycle in Cycle Config before pushing shared goals.
+            </div>
+          )}
 
-        {step === 2 && (
-          <Step2
-            selected={selectedUserIds}
-            onChange={setSelectedUserIds}
-            onBack={() => setStep(1)}
-            onNext={() => setStep(3)}
-          />
+          {/* Step content */}
+          {step === 1 && <Step1 onNext={handleStep1} />}
+
+          {step === 2 && (
+            <Step2
+              employees={employees}
+              selected={selectedUserIds}
+              onChange={setSelectedUserIds}
+              onBack={() => setStep(1)}
+              onNext={() => setStep(3)}
+            />
+          )}
+
+          {step === 2 && usersLoading && (
+            <p className="text-body-md text-on-surface-variant">Loading employees…</p>
+          )}
+
+          {step === 3 && kpiData && (
+            <Step3
+              employees={employees}
+              kpiData={kpiData}
+              selectedUserIds={selectedUserIds}
+              isPending={push.isPending}
+              onBack={() => setStep(2)}
+              onPush={handlePush}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* History of pushed KPIs */}
+      <PushedKpiHistory cycleId={activeCycleId} />
+    </div>
+  );
+}
+
+// ─── History section ──────────────────────────────────────────────────────────
+
+function PushedKpiHistory({ cycleId }: { cycleId: string | undefined }) {
+  const { data, isLoading, isError } = useAdminPushedSharedGoals(cycleId);
+
+  const grouped = useMemo(() => {
+    if (!data) return [] as Array<{
+      sourceGoalId: string;
+      title: string;
+      description: string | null;
+      thrustArea: ThrustArea | null;
+      uomType: UoMType | null;
+      targetValue: number | null;
+      targetDate: string | null;
+      weightage: number;
+      pushedAt: string;
+      recipients: PushedSharedGoal[];
+    }>;
+    const map = new Map<string, ReturnType<typeof toGroup>>();
+    function toGroup(g: PushedSharedGoal) {
+      return {
+        sourceGoalId: g.sourceGoalId,
+        title: g.sourceGoalTitle,
+        description: g.sourceGoalDescription,
+        thrustArea: g.sourceGoalThrustArea,
+        uomType: g.sourceGoalUomType,
+        targetValue: g.sourceGoalTargetValue,
+        targetDate: g.sourceGoalTargetDate,
+        weightage: g.sourceGoalWeightage,
+        pushedAt: g.pushedAt,
+        recipients: [g],
+      };
+    }
+    for (const g of data) {
+      const existing = map.get(g.sourceGoalId);
+      if (existing) {
+        existing.recipients.push(g);
+        if (new Date(g.pushedAt) > new Date(existing.pushedAt)) existing.pushedAt = g.pushedAt;
+      } else {
+        map.set(g.sourceGoalId, toGroup(g));
+      }
+    }
+    return Array.from(map.values()).sort(
+      (a, b) => new Date(b.pushedAt).getTime() - new Date(a.pushedAt).getTime(),
+    );
+  }, [data]);
+
+  return (
+    <div className="bg-surface-container-lowest border border-outline-variant rounded-xl shadow-level-1 overflow-hidden">
+      <div className="flex items-center justify-between px-xl py-md border-b border-outline-variant bg-surface-container-low">
+        <div className="flex items-center gap-sm">
+          <span className="material-symbols-outlined text-on-surface-variant">history</span>
+          <h3 className="text-title-md text-on-surface font-semibold">Previously pushed KPIs</h3>
+        </div>
+        <span className="text-label-md text-on-surface-variant">
+          {grouped.length} KPI{grouped.length !== 1 ? "s" : ""}
+        </span>
+      </div>
+
+      <div className="p-xl">
+        {!cycleId && (
+          <p className="text-body-md text-on-surface-variant text-center py-lg">
+            Activate a cycle to view push history.
+          </p>
         )}
+        {cycleId && isLoading && (
+          <p className="text-body-md text-on-surface-variant text-center py-lg">Loading history…</p>
+        )}
+        {cycleId && isError && (
+          <p className="text-body-md text-error text-center py-lg">Failed to load history.</p>
+        )}
+        {cycleId && !isLoading && !isError && grouped.length === 0 && (
+          <div className="text-body-md text-on-surface-variant border border-dashed border-outline-variant rounded-lg p-lg text-center">
+            No KPIs have been pushed in this cycle yet.
+          </div>
+        )}
+        {cycleId && grouped.length > 0 && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-md">
+            {grouped.map((k) => {
+              let targetDisplay = "—";
+              if (k.uomType === UoMType.ZERO) targetDisplay = "0";
+              else if (k.uomType === UoMType.TIMELINE) targetDisplay = k.targetDate ?? "—";
+              else if (k.targetValue !== null) targetDisplay = String(k.targetValue);
+              return (
+                <div
+                  key={k.sourceGoalId}
+                  className="border border-outline-variant rounded-lg p-md bg-surface-container-low hover:shadow-level-1 transition-shadow"
+                >
+                  <div className="flex items-start justify-between gap-md mb-sm">
+                    <div className="min-w-0">
+                      <p className="text-title-md text-on-surface font-semibold truncate">{k.title}</p>
+                      {k.description && (
+                        <p className="text-body-md text-on-surface-variant mt-xs line-clamp-2">
+                          {k.description}
+                        </p>
+                      )}
+                    </div>
+                    <span className="bg-secondary-container text-on-secondary-container text-label-md px-2 py-1 rounded shrink-0">
+                      Shared
+                    </span>
+                  </div>
 
-        {step === 3 && kpiData && (
-          <Step3
-            kpiData={kpiData}
-            selectedUserIds={selectedUserIds}
-            isPending={push.isPending}
-            onBack={() => setStep(2)}
-            onPush={handlePush}
-          />
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-sm border-t border-outline-variant pt-sm">
+                    <div>
+                      <p className="text-label-md text-on-surface-variant">Area</p>
+                      <p className="text-body-md text-on-surface font-medium">
+                        {k.thrustArea ? formatThrustArea(k.thrustArea) : "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-label-md text-on-surface-variant">Target</p>
+                      <p className="text-body-md text-on-surface font-medium">{targetDisplay}</p>
+                    </div>
+                    <div>
+                      <p className="text-label-md text-on-surface-variant">Weightage</p>
+                      <p className="text-body-md text-on-surface font-medium">{k.weightage}%</p>
+                    </div>
+                    <div>
+                      <p className="text-label-md text-on-surface-variant">Pushed</p>
+                      <p className="text-body-md text-on-surface font-medium">
+                        {new Date(k.pushedAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-sm pt-sm border-t border-outline-variant">
+                    <div className="flex items-center gap-xs mb-xs">
+                      <span className="material-symbols-outlined text-on-surface-variant text-[16px]">group</span>
+                      <p className="text-label-md text-on-surface-variant">
+                        {k.recipients.length} recipient{k.recipients.length !== 1 ? "s" : ""}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-xs">
+                      {k.recipients.slice(0, 6).map((r) => (
+                        <span
+                          key={r.id}
+                          className="inline-flex items-center bg-surface-container border border-outline-variant text-label-md px-sm py-xs rounded-full"
+                        >
+                          {r.recipientName}
+                        </span>
+                      ))}
+                      {k.recipients.length > 6 && (
+                        <span className="text-label-md text-on-surface-variant px-sm py-xs">
+                          +{k.recipients.length - 6} more
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>

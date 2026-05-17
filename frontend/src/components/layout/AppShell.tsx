@@ -52,6 +52,7 @@ export function AppShell() {
               closeDate={activeWindow!.windowClose}
               openDate={activeWindow!.windowOpen}
               variant={bannerVariant}
+              phase={activeWindow!.phase}
             />
           )}
 

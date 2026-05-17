@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useAllGoals } from "@/hooks/useGoals";
-import { useAdminAllSheets, useAdminAuditLog } from "@/hooks/useAdmin";
+import { useAdminAllSheets } from "@/hooks/useAdmin";
 import { mockUsers } from "@/mocks/mockUsers";
 import { GoalStatus } from "@/types/goal.types";
 import { UserRole } from "@/types/user.types";
@@ -30,14 +30,12 @@ const CHART_BARS = [
 export default function ReportsPage() {
   const { data: allGoals = [], isLoading: goalsLoading } = useAllGoals(CYCLE_ID);
   const { data: allSheetsRes, isLoading: sheetsLoading } = useAdminAllSheets(CYCLE_ID);
-  const { data: auditPage, isLoading: auditLoading } = useAdminAuditLog({ pageSize: 10 });
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
 
   const isLoading = goalsLoading || sheetsLoading;
   const sheets = allSheetsRes?.items ?? [];
-  const auditLogs = auditPage?.items ?? [];
 
   const employees = mockUsers.filter((u) => u.role === UserRole.EMPLOYEE);
 
@@ -258,61 +256,6 @@ export default function ReportsPage() {
           </div>
         )}
       </div>
-
-      {/* Recent Audit Logs */}
-      {!auditLoading && auditLogs.length > 0 && (
-        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl shadow-level-1 overflow-hidden">
-          <div className="p-lg border-b border-outline-variant flex justify-between items-center bg-surface-bright">
-            <div>
-              <h3 className="text-title-lg text-on-surface">Recent Audit Logs</h3>
-              <p className="text-label-md text-on-surface-variant">System modifications and access trail</p>
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-surface-container text-on-surface-variant text-label-md uppercase tracking-wider border-b border-outline-variant">
-                  <th className="p-md font-medium min-w-[150px]">Timestamp</th>
-                  <th className="p-md font-medium min-w-[180px]">User</th>
-                  <th className="p-md font-medium min-w-[140px]">Action</th>
-                  <th className="p-md font-medium min-w-[200px]">Details</th>
-                </tr>
-              </thead>
-              <tbody className="text-body-md text-on-surface divide-y divide-outline-variant/50">
-                {auditLogs.map((log: any) => {
-                  const initials = log.actorName.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase();
-                  const actionBg = log.action === "INSERT" ? "bg-tertiary-container/20 text-tertiary"
-                    : log.action === "DELETE" ? "bg-error-container/50 text-on-error-container"
-                    : "bg-surface-variant text-on-surface-variant";
-                  return (
-                    <tr key={log.id} className="hover:bg-surface-bright transition-colors">
-                      <td className="p-md whitespace-nowrap text-on-surface-variant font-code text-[12px]">
-                        {new Date(log.changedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                      </td>
-                      <td className="p-md">
-                        <div className="flex items-center gap-sm">
-                          <div className="w-6 h-6 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-label-md text-[10px]">
-                            {initials}
-                          </div>
-                          <span>{log.actorName}</span>
-                        </div>
-                      </td>
-                      <td className="p-md">
-                        <span className={cn("px-2 py-1 rounded font-code text-[11px]", actionBg)}>
-                          {log.action}_{log.tableName?.toUpperCase()}
-                        </span>
-                      </td>
-                      <td className="p-md text-on-surface-variant">
-                        {log.fieldName ? `${log.fieldName}: ${log.oldValue ?? "—"} → ${log.newValue ?? "—"}` : log.tableName}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -24,6 +24,14 @@ const PHASE_OPTIONS: CyclePhase[] = [
   CyclePhase.Q4,
 ];
 
+const PHASE_LABELS: Record<CyclePhase, string> = {
+  [CyclePhase.GOAL_SETTING]: "Goal Setting",
+  [CyclePhase.Q1]: "Q1 Check-in",
+  [CyclePhase.Q2]: "Q2 Check-in",
+  [CyclePhase.Q3]: "Q3 Check-in",
+  [CyclePhase.Q4]: "Q4 / Annual Review",
+};
+
 function getDaysRemaining(cycle: CycleConfig): string {
   if (!cycle.isActive) return "";
   try {
@@ -150,14 +158,6 @@ export default function CycleConfigPage() {
               <span className="material-symbols-outlined text-primary">calendar_month</span>
               Active Goal Cycles
             </h3>
-            <div className="flex gap-xs">
-              <button className="text-on-surface-variant hover:text-primary transition-colors">
-                <span className="material-symbols-outlined">filter_list</span>
-              </button>
-              <button className="text-on-surface-variant hover:text-primary transition-colors">
-                <span className="material-symbols-outlined">more_vert</span>
-              </button>
-            </div>
           </div>
           <div className="p-lg flex-1 overflow-x-auto">
             {isLoading ? (
@@ -307,7 +307,7 @@ export default function CycleConfigPage() {
                 className="w-full p-sm rounded-lg border border-outline-variant bg-surface-container-lowest focus:border-primary focus:ring-2 focus:ring-primary/15 outline-none text-body-md text-on-surface"
               >
                 {PHASE_OPTIONS.map((p) => (
-                  <option key={p} value={p}>{p}</option>
+                  <option key={p} value={p}>{PHASE_LABELS[p]}</option>
                 ))}
               </select>
             </label>

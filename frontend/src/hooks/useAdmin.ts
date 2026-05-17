@@ -2,7 +2,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { adminService } from "@/services/admin.service";
 import { goalService } from "@/services/goal.service";
-import { useAuth } from "./useAuth";
 import type { AuditLogQuery } from "@/services/admin.service";
 import type { CycleConfig } from "@/types/cycle.types";
 import type { ThrustArea, UoMType } from "@/types/goal.types";
@@ -34,6 +33,14 @@ export function useAdminAllSheets(cycleId?: string) {
   return useQuery({
     queryKey: ["admin-all-sheets", cycleId],
     queryFn: () => goalService.getAllSheets(cycleId),
+  });
+}
+
+export function useAdminPushedSharedGoals(cycleId?: string) {
+  return useQuery({
+    queryKey: ["admin-pushed-shared-goals", cycleId],
+    queryFn: () => adminService.listPushedSharedGoals(cycleId as string),
+    enabled: Boolean(cycleId),
   });
 }
 
@@ -134,31 +141,32 @@ export interface KpiPayload {
 
 export function usePushSharedGoal() {
   const qc = useQueryClient();
-  const { currentUser } = useAuth();
 
   return useMutation({
-    mutationFn: async ({
+    mutationFn: ({
       kpiData,
       targetUserIds,
       cycleId,
     }: {
       kpiData: KpiPayload;
       targetUserIds: string[];
-      cycleId: string;
-    }) => {
-      const sourceGoal = await goalService.createGoal({
-        ...kpiData,
-        userId: currentUser?.id ?? "u-admin",
+      cycleId?: string;
+    }) =>
+      adminService.pushSharedGoal({
+        goalData: kpiData,
+        recipientUserIds: targetUserIds,
+        suggestedWeightage: kpiData.weightage,
         cycleId,
-      });
-      return adminService.pushSharedGoal(sourceGoal.id, targetUserIds, cycleId);
-    },
+      }),
     onSuccess: (goals) => {
       qc.invalidateQueries({ queryKey: ["all-goals"] });
-      toast.success(
-        `Shared goal pushed to ${goals.length} employee${goals.length !== 1 ? "s" : ""}`
-      );
+      qc.invalidateQueries({ queryKey: ["admin-pushed-shared-goals"] });
+      const n = goals.length;
+      toast.success(`Shared goal pushed to ${n} employee${n === 1 ? "" : "s"}`);
     },
-    onError: () => toast.error("Failed to push shared goal"),
+    onError: (e: unknown) => {
+      const msg = e instanceof Error ? e.message : "Failed to push shared goal";
+      toast.error(msg);
+    },
   });
 }

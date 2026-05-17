@@ -24,6 +24,7 @@ router = APIRouter()
 
 
 def _build_shared_goal_response(shared_goal: SharedGoal) -> SharedGoalResponse:
+	source = shared_goal.source_goal if _attr_loaded(shared_goal, "source_goal") else None
 	return SharedGoalResponse.model_validate(
 		{
 			"id": shared_goal.id,
@@ -33,11 +34,28 @@ def _build_shared_goal_response(shared_goal: SharedGoal) -> SharedGoalResponse:
 			"custom_weightage": shared_goal.custom_weightage,
 			"pushed_at": shared_goal.pushed_at,
 			"pushed_by_name": shared_goal.pusher.full_name if getattr(shared_goal, "pusher", None) else "",
+			"source_goal_title": source.title if source else None,
+			"source_goal_description": source.description if source else None,
+			"source_goal_thrust_area": source.thrust_area if source else None,
+			"source_goal_uom_type": source.uom_type if source else None,
+			"source_goal_target_value": source.target_value if source else None,
+			"source_goal_target_date": source.target_date if source else None,
+			"source_goal_weightage": source.weightage if source else None,
 		}
 	)
 
 
+def _attr_loaded(obj: object, name: str) -> bool:
+	# In async SQLAlchemy, accessing an unloaded relationship triggers lazy
+	# IO that raises MissingGreenlet. Only touch attributes already in the
+	# instance __dict__ (i.e. loaded via select-in/joined load or set).
+	return name in getattr(obj, "__dict__", {})
+
+
 def _build_goal_response(goal: Goal) -> GoalResponse:
+	owner = goal.owner if _attr_loaded(goal, "owner") else None
+	sheet = goal.goal_sheet if _attr_loaded(goal, "goal_sheet") else None
+	locker = goal.locker if _attr_loaded(goal, "locker") else None
 	return GoalResponse.model_validate(
 		{
 			"id": goal.id,
@@ -57,11 +75,11 @@ def _build_goal_response(goal: Goal) -> GoalResponse:
 			"version": goal.version,
 			"locked_at": goal.locked_at,
 			"locked_by": goal.locked_by,
-			"locked_by_name": goal.locker.full_name if getattr(goal, "locker", None) else None,
+			"locked_by_name": locker.full_name if locker else None,
 			"created_at": goal.created_at,
 			"updated_at": goal.updated_at,
-			"owner_name": goal.owner.full_name if getattr(goal, "owner", None) else None,
-			"sheet_status": goal.goal_sheet.status if getattr(goal, "goal_sheet", None) else None,
+			"owner_name": owner.full_name if owner else None,
+			"sheet_status": sheet.status if sheet else None,
 		}
 	)
 
@@ -111,10 +129,15 @@ async def list_pushed_shared_goals(
 ) -> APIResponse[list[SharedGoalResponse]]:
 	stmt = (
 		select(SharedGoal)
-		.options(selectinload(SharedGoal.recipient), selectinload(SharedGoal.pusher))
+		.options(
+			selectinload(SharedGoal.recipient),
+			selectinload(SharedGoal.pusher),
+			selectinload(SharedGoal.source_goal),
+		)
 		.join(Goal, SharedGoal.source_goal_id == Goal.id)
 		.where(SharedGoal.pushed_by == current_user.id)
 		.where(Goal.cycle_id == cycle_id)
+		.order_by(SharedGoal.pushed_at.desc())
 	)
 	result = await db.execute(stmt)
 	shared_goals = list(result.scalars().all())

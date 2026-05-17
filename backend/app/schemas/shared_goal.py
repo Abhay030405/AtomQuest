@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 from uuid import UUID
 
 from pydantic import Field
 
+from app.core.constants import ThrustArea, UoMType
 from app.schemas.common import BaseSchema
 from app.schemas.goal import GoalCreate
 
@@ -25,3 +26,12 @@ class SharedGoalResponse(BaseSchema):
 	custom_weightage: Optional[Decimal] = None
 	pushed_at: datetime
 	pushed_by_name: str
+	# Enriched source-goal fields so the admin push-history UI can render
+	# the KPI without an extra round-trip to fetch each source goal.
+	source_goal_title: Optional[str] = None
+	source_goal_description: Optional[str] = None
+	source_goal_thrust_area: Optional[ThrustArea] = None
+	source_goal_uom_type: Optional[UoMType] = None
+	source_goal_target_value: Optional[Decimal] = None
+	source_goal_target_date: Optional[date] = None
+	source_goal_weightage: Optional[Decimal] = None

@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, XCircle, Info, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/utils/date.util";
 import { cn } from "@/lib/utils";
+import { CyclePhase } from "@/types/cycle.types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -14,7 +15,16 @@ interface Props {
   readonly closeDate: string;
   readonly openDate: string;
   readonly variant: BannerVariant;
+  readonly phase: CyclePhase;
 }
+
+const PHASE_LABELS: Record<CyclePhase, string> = {
+  [CyclePhase.GOAL_SETTING]: "Goal Setting",
+  [CyclePhase.Q1]: "Q1 Check-in",
+  [CyclePhase.Q2]: "Q2 Check-in",
+  [CyclePhase.Q3]: "Q3 Check-in",
+  [CyclePhase.Q4]: "Q4 / Annual Review",
+};
 
 // ─── Variant config ───────────────────────────────────────────────────────────
 
@@ -51,19 +61,21 @@ function getBannerText(
   isOpen: boolean,
   daysRemaining: number,
   closeDate: string,
-  openDate: string
+  openDate: string,
+  phase: CyclePhase
 ): string {
+  const phaseLabel = PHASE_LABELS[phase] ?? "Cycle";
   if (isOpen && daysRemaining > 7) {
-    return `Goal Setting Window: Open until ${formatDate(closeDate)} · ${daysRemaining} days remaining`;
+    return `${phaseLabel} Window: Open until ${formatDate(closeDate)} · ${daysRemaining} days remaining`;
   }
   if (isOpen && daysRemaining > 0) {
-    return `⚠ Goal Setting Window closes in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"} — submit before ${formatDate(closeDate)}`;
+    return `⚠ ${phaseLabel} Window closes in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"} — submit before ${formatDate(closeDate)}`;
   }
   if (!isOpen && daysRemaining === 0) {
-    return `Goal Setting Window is closed · Next window opens in July for Q1 Check-in`;
+    return `${phaseLabel} Window is closed`;
   }
   // Not yet open
-  return `Q1 Check-in Window opens ${formatDate(openDate)}`;
+  return `${phaseLabel} Window opens ${formatDate(openDate)}`;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -74,6 +86,7 @@ export function WindowStatusBanner({
   closeDate,
   openDate,
   variant,
+  phase,
 }: Readonly<Props>) {
   const [dismissed, setDismissed] = useState(false);
 
@@ -81,7 +94,7 @@ export function WindowStatusBanner({
 
   const config = VARIANT_CONFIG[variant];
   const Icon = config.icon;
-  const text = getBannerText(isOpen, daysRemaining, closeDate, openDate);
+  const text = getBannerText(isOpen, daysRemaining, closeDate, openDate, phase);
 
   return (
     <div

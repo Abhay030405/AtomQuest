@@ -1,6 +1,8 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
+import * as XLSX from "xlsx";
 import { useAdminAuditLog } from "@/hooks/useAdmin";
 import { cn } from "@/lib/utils";
+import type { AuditLog } from "@/types/audit.types";
 
 const ACTION_CHIP: Record<string, string> = {
   INSERT: "bg-tertiary-container/20 text-tertiary",
@@ -8,12 +10,99 @@ const ACTION_CHIP: Record<string, string> = {
   DELETE: "bg-error-container/50 text-on-error-container",
 };
 
+type ExportFormat = "json" | "csv" | "excel";
+
+const EXPORT_COLUMNS: { key: keyof AuditLog; label: string }[] = [
+  { key: "changedAt", label: "Timestamp" },
+  { key: "actorName", label: "User" },
+  { key: "actorRole", label: "Role" },
+  { key: "action", label: "Action" },
+  { key: "tableName", label: "Table" },
+  { key: "recordId", label: "Record ID" },
+  { key: "fieldName", label: "Field" },
+  { key: "oldValue", label: "Old Value" },
+  { key: "newValue", label: "New Value" },
+];
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function timestampSuffix(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+}
+
+function csvEscape(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  const s = String(value);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function exportAudit(rows: AuditLog[], format: ExportFormat) {
+  const base = `audit-log-${timestampSuffix()}`;
+  if (format === "json") {
+    downloadBlob(
+      new Blob([JSON.stringify(rows, null, 2)], { type: "application/json" }),
+      `${base}.json`,
+    );
+    return;
+  }
+  if (format === "csv") {
+    const header = EXPORT_COLUMNS.map((c) => csvEscape(c.label)).join(",");
+    const body = rows
+      .map((r) => EXPORT_COLUMNS.map((c) => csvEscape(r[c.key])).join(","))
+      .join("\r\n");
+    downloadBlob(
+      new Blob([`${header}\r\n${body}`], { type: "text/csv;charset=utf-8" }),
+      `${base}.csv`,
+    );
+    return;
+  }
+  // Excel: real .xlsx via SheetJS so Office opens it without a format warning.
+  const aoa: (string | number | null)[][] = [
+    EXPORT_COLUMNS.map((c) => c.label),
+    ...rows.map((r) =>
+      EXPORT_COLUMNS.map((c) => {
+        const v = r[c.key];
+        return v === null || v === undefined ? "" : String(v);
+      }),
+    ),
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Audit Log");
+  XLSX.writeFile(wb, `${base}.xlsx`);
+}
+
 export default function AuditTrailPage() {
   const { data: auditPage, isLoading } = useAdminAuditLog({ pageSize: 500 });
   const logs = auditPage?.items ?? [];
 
   const [search, setSearch] = useState("");
   const [actionFilter, setActionFilter] = useState("");
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setExportMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [exportMenuOpen]);
 
   const filtered = useMemo(() => {
     return logs.filter((log: any) => {
@@ -23,6 +112,12 @@ export default function AuditTrailPage() {
     });
   }, [logs, search, actionFilter]);
 
+  const handleExport = (format: ExportFormat) => {
+    setExportMenuOpen(false);
+    if (filtered.length === 0) return;
+    exportAudit(filtered, format);
+  };
+
   return (
     <div className="p-margin-mobile md:p-margin-desktop max-w-[1440px] mx-auto space-y-lg">
       {/* Header */}
@@ -31,10 +126,46 @@ export default function AuditTrailPage() {
           <h2 className="text-headline-lg text-on-surface">Audit Trail</h2>
           <p className="text-body-lg text-on-surface-variant mt-xs">System-wide change log — every insert, update, and delete.</p>
         </div>
-        <button className="bg-surface-container-lowest border border-outline-variant text-on-surface text-label-md px-md py-sm rounded-lg shadow-level-1 hover:bg-surface-container-low transition-colors flex items-center gap-xs self-start md:self-auto">
-          <span className="material-symbols-outlined text-[18px]">download</span>
-          Export Log
-        </button>
+        <div ref={exportMenuRef} className="relative self-start md:self-auto">
+          <button
+            type="button"
+            onClick={() => setExportMenuOpen((v) => !v)}
+            disabled={isLoading || filtered.length === 0}
+            className="bg-surface-container-lowest border border-outline-variant text-on-surface text-label-md px-md py-sm rounded-lg shadow-level-1 hover:bg-surface-container-low transition-colors flex items-center gap-xs disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <span className="material-symbols-outlined text-[18px]">download</span>
+            Export Log
+            <span className="material-symbols-outlined text-[16px]">expand_more</span>
+          </button>
+          {exportMenuOpen && (
+            <div className="absolute right-0 mt-xs w-44 bg-surface-container-lowest border border-outline-variant rounded-lg shadow-level-2 z-20 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => handleExport("json")}
+                className="w-full text-left px-md py-sm text-body-md text-on-surface hover:bg-surface-container-low flex items-center gap-sm"
+              >
+                <span className="material-symbols-outlined text-[18px] text-on-surface-variant">code</span>
+                JSON
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExport("excel")}
+                className="w-full text-left px-md py-sm text-body-md text-on-surface hover:bg-surface-container-low flex items-center gap-sm border-t border-outline-variant"
+              >
+                <span className="material-symbols-outlined text-[18px] text-on-surface-variant">table_view</span>
+                Excel (.xlsx)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExport("csv")}
+                className="w-full text-left px-md py-sm text-body-md text-on-surface hover:bg-surface-container-low flex items-center gap-sm border-t border-outline-variant"
+              >
+                <span className="material-symbols-outlined text-[18px] text-on-surface-variant">description</span>
+                CSV
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Filters */}
@@ -77,10 +208,10 @@ export default function AuditTrailPage() {
 
       {/* Table */}
       <div className="bg-surface-container-lowest border border-outline-variant rounded-xl shadow-level-1 overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-surface-container text-on-surface-variant text-label-md uppercase tracking-wider border-b border-outline-variant">
+              <tr className="bg-surface-container text-on-surface-variant text-label-md uppercase tracking-wider border-b border-outline-variant sticky top-0 z-10">
                 <th className="p-md font-medium min-w-[160px]">Timestamp</th>
                 <th className="p-md font-medium min-w-[200px]">User</th>
                 <th className="p-md font-medium min-w-[150px]">Action</th>
