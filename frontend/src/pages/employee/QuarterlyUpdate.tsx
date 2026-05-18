@@ -11,6 +11,8 @@ import {
   Quarter,
   type AchievementInput,
 } from "@/services/achievement.service";
+import { UOM_TYPE_META } from "@/constants";
+import type { UoMType } from "@/types/goal.types";
 import { toast } from "sonner";
 
 const QUARTERS: { id: Quarter; label: string }[] = [
@@ -134,7 +136,8 @@ export default function QuarterlyUpdate() {
     for (const entry of goalEntries) {
       const draft = drafts[entry.goalId];
       if (!draft) continue; // user didn't touch this goal — skip
-      const isTimeline = entry.uomType === "timeline";
+      if (entry.sourceSharedGoalId) continue; // managed by goal owner — not submittable
+      const isTimeline = entry.uomType === "TIMELINE";
       // Reject obvious invalid inputs early so we don't get backend 422s.
       if (draft.status !== AchievementStatus.NOT_STARTED) {
         if (isTimeline && !draft.actualDate) {
@@ -161,7 +164,7 @@ export default function QuarterlyUpdate() {
         return;
       }
       if (entry.achievement) {
-        toResubmit.push({ id: entry.achievement.id, draft, isTimeline });
+        toResubmit.push({ id: entry.achievement.id, draft, isTimeline: entry.uomType === "TIMELINE" });
       } else {
         toCreate.push(parsed);
       }
@@ -312,17 +315,24 @@ export default function QuarterlyUpdate() {
           ) : (
             goalEntries.map((entry) => {
               const draft = draftFor(entry.goalId);
-              const isTimeline = entry.uomType === "timeline";
+              const isTimeline = entry.uomType === "TIMELINE";
               const hasAchievement = entry.achievement !== null;
               const score = entry.achievement?.computedScore;
+              const isShared = Boolean(entry.sourceSharedGoalId);
               return (
-                <div key={entry.goalId} className="bg-surface-container-lowest rounded-xl border border-outline-variant shadow-level-1 overflow-hidden">
+                <div key={entry.goalId} className={`bg-surface-container-lowest rounded-xl border shadow-level-1 overflow-hidden ${isShared ? "border-outline-variant opacity-75" : "border-outline-variant"}`}>
                   <div className="p-md border-b border-outline-variant bg-surface-container-low flex justify-between items-start gap-md">
                     <div className="min-w-0">
                       <div className="flex items-center gap-xs mb-xs">
                         <span className="material-symbols-outlined text-secondary text-[16px]">lock</span>
-                        <span className="text-label-md text-secondary uppercase">{entry.uomType}</span>
+                        <span className="text-label-md text-secondary">{UOM_TYPE_META[entry.uomType as UoMType]?.label ?? entry.uomType}</span>
                         <span className="text-label-md text-on-surface-variant">• Weightage {entry.weightage}%</span>
+                        {isShared && (
+                          <span className="inline-flex items-center gap-xs px-2 py-0.5 rounded bg-surface-variant text-on-surface-variant text-label-sm">
+                            <span className="material-symbols-outlined text-[14px]">share</span>
+                            <span>Managed by goal owner</span>
+                          </span>
+                        )}
                       </div>
                       <h3 className="text-title-lg text-on-surface truncate">{entry.title}</h3>
                     </div>
@@ -336,8 +346,9 @@ export default function QuarterlyUpdate() {
                       <label className="text-label-md text-on-surface-variant block mb-xs">Status</label>
                       <select
                         value={draft.status}
-                        onChange={(e) => updateDraft(entry.goalId, { status: e.target.value as AchievementStatus })}
-                        className="w-full bg-surface-container-lowest border border-outline-variant text-on-surface text-body-md rounded-lg focus:ring-2 focus:ring-primary focus:border-primary px-sm py-2"
+                        disabled={isShared}
+                        onChange={(e) => !isShared && updateDraft(entry.goalId, { status: e.target.value as AchievementStatus })}
+                        className={`w-full bg-surface-container-lowest border border-outline-variant text-on-surface text-body-md rounded-lg px-sm py-2 ${isShared ? "opacity-60 cursor-not-allowed" : "focus:ring-2 focus:ring-primary focus:border-primary"}`}
                       >
                         {STATUS_OPTIONS.map((s) => (
                           <option key={s} value={s}>{ACHIEVEMENT_STATUS_LABEL[s]}</option>
@@ -361,17 +372,19 @@ export default function QuarterlyUpdate() {
                           <input
                             type="date"
                             value={draft.actualDate}
-                            onChange={(e) => updateDraft(entry.goalId, { actualDate: e.target.value })}
-                            className="w-full bg-surface-container-lowest border border-outline-variant text-on-surface text-body-md rounded-lg focus:ring-2 focus:ring-primary focus:border-primary px-sm py-2"
+                            disabled={isShared}
+                            onChange={(e) => !isShared && updateDraft(entry.goalId, { actualDate: e.target.value })}
+                            className={`w-full bg-surface-container-lowest border border-outline-variant text-on-surface text-body-md rounded-lg px-sm py-2 ${isShared ? "opacity-60 cursor-not-allowed" : "focus:ring-2 focus:ring-primary focus:border-primary"}`}
                           />
                         ) : (
                           <input
                             type="number"
                             inputMode="decimal"
                             value={draft.actualValueRaw}
-                            onChange={(e) => updateDraft(entry.goalId, { actualValueRaw: e.target.value })}
-                            placeholder="Enter actual"
-                            className="w-full bg-surface-container-lowest border border-outline-variant text-on-surface text-body-md rounded-lg focus:ring-2 focus:ring-primary focus:border-primary px-sm py-2"
+                            disabled={isShared}
+                            onChange={(e) => !isShared && updateDraft(entry.goalId, { actualValueRaw: e.target.value })}
+                            placeholder={isShared ? "Managed by goal owner" : "Enter actual"}
+                            className={`w-full bg-surface-container-lowest border border-outline-variant text-on-surface text-body-md rounded-lg px-sm py-2 ${isShared ? "opacity-60 cursor-not-allowed" : "focus:ring-2 focus:ring-primary focus:border-primary"}`}
                           />
                         )}
                       </div>

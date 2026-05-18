@@ -12,13 +12,14 @@ import { logRouteChange } from "@/utils/devRouteLogger";
 // ─── Lazy-loaded pages ────────────────────────────────────────────────────────
 
 const LoginPage = lazy(() => import("@/pages/auth/LoginPage"));
+const MicrosoftCallbackPage = lazy(() => import("@/pages/auth/MicrosoftCallbackPage"));
 
 const EmployeeDashboard = lazy(() => import("@/pages/employee/EmployeeDashboard"));
 const MyGoals = lazy(() => import("@/pages/employee/MyGoals"));
 const QuarterlyUpdate = lazy(() => import("@/pages/employee/QuarterlyUpdate"));
+const CheckinsReceived = lazy(() => import("@/pages/employee/CheckinsReceived"));
 
 const ManagerDashboard = lazy(() => import("@/pages/manager/ManagerDashboard"));
-const ApprovalQueuePage = lazy(() => import("@/pages/manager/ApprovalQueuePage"));
 const GoalReviewPage = lazy(() => import("@/pages/manager/GoalReviewPage"));
 const TeamGoalsPage = lazy(() => import("@/pages/manager/TeamGoalsPage"));
 const CheckinModule = lazy(() => import("@/pages/manager/CheckinModule"));
@@ -89,6 +90,7 @@ export default function App() {
         <Routes>
           {/* Public */}
           <Route path={ROUTES.LOGIN} element={<LoginPage />} />
+          <Route path="/auth/callback" element={<MicrosoftCallbackPage />} />
 
           {/* Employee routes — gated by SUBMIT_GOAL_SHEET (employee-exclusive) */}
           <Route element={<ProtectedRoute requiredPermission={Permission.SUBMIT_GOAL_SHEET} />}>
@@ -96,6 +98,7 @@ export default function App() {
               <Route path={ROUTE_PATTERNS.EMPLOYEE.ROOT} element={<EmployeeDashboard />} />
               <Route path={ROUTE_PATTERNS.EMPLOYEE.GOALS} element={<MyGoals />} />
               <Route path={ROUTE_PATTERNS.EMPLOYEE.QUARTERLY_UPDATE} element={<QuarterlyUpdate />} />
+              <Route path={ROUTE_PATTERNS.EMPLOYEE.MY_CHECKINS} element={<CheckinsReceived />} />
             </Route>
           </Route>
 
@@ -105,7 +108,6 @@ export default function App() {
           <Route element={<ProtectedRoute requiredPermission={Permission.APPROVE_GOAL} />}>
             <Route element={<AppShell />}>
               <Route path={ROUTE_PATTERNS.MANAGER.ROOT} element={<ManagerDashboard />} />
-              <Route path={ROUTE_PATTERNS.MANAGER.REVIEW} element={<ApprovalQueuePage />} />
               <Route path={ROUTE_PATTERNS.MANAGER.REVIEW_SHEET} element={<GoalReviewPage />} />
               <Route path={ROUTE_PATTERNS.MANAGER.TEAM_GOALS} element={<TeamGoalsPage />} />
               <Route path={ROUTE_PATTERNS.MANAGER.CHECKIN} element={<CheckinModule />} />

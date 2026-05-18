@@ -82,6 +82,7 @@ interface AuthState {
   loginError: string | null;
 
   login: (email: string, password: string, expectedRole?: UserRole) => Promise<User>;
+  loginWithMicrosoftTokens: (accessToken: string, refreshToken: string, apiUser: LoginApiUser) => User;
   logout: () => void;
   hasPermission: (permission: Permission) => boolean;
 }
@@ -126,6 +127,19 @@ export const useAuthStore = create<AuthState>()(
           set({ isLoading: false, loginError: message });
           throw new Error(message);
         }
+      },
+
+      loginWithMicrosoftTokens: (accessToken, refreshToken, apiUser) => {
+        const mappedUser = mapLoginUser(apiUser);
+        set({
+          currentUser: mappedUser,
+          token: accessToken,
+          refreshToken,
+          isAuthenticated: true,
+          isLoading: false,
+          loginError: null,
+        });
+        return mappedUser;
       },
 
       logout: () =>

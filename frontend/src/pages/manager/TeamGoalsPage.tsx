@@ -701,6 +701,101 @@ export default function TeamGoalsPage() {
                     </div>
                   </div>
 
+                  {/* Bulk action bar — appears once the manager has staged any
+                      goals into approved or rejected. If any goal is rejected
+                      the entire sheet is returned for rework; otherwise the
+                      whole sheet is approved. */}
+                  {(() => {
+                    const candidateGoals = [
+                      ...board.grouped.submitted,
+                      ...board.grouped.approved,
+                      ...board.grouped.rejected,
+                    ];
+                    const boardSheet = candidateGoals
+                      .map((g: any) => sheetByGoalId.get(g.id))
+                      .find((s): s is GoalSheet => Boolean(s));
+                    if (!boardSheet) return null;
+                    const stageForSheet = staged[boardSheet.id] ?? { approved: new Set<string>(), rejected: new Set<string>() };
+                    const stagedApprovedCount = stageForSheet.approved.size;
+                    const stagedRejectedCount = stageForSheet.rejected.size;
+                    const stagedTotal = stagedApprovedCount + stagedRejectedCount;
+                    if (stagedTotal === 0) return null;
+                    // Block action while goals remain in Pending Review.
+                    const stillPending = board.grouped.submitted.some(
+                      (g: any) => g.status === GoalStatus.SUBMITTED || g.status === GoalStatus.UNDER_REVIEW,
+                    );
+                    const hasRejected = stagedRejectedCount > 0;
+                    return (
+                      <div className="px-md py-sm border-b border-outline-variant bg-surface-container/40 flex flex-wrap items-center gap-sm justify-between">
+                        <div className="flex items-center gap-xs text-label-md text-on-surface-variant">
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <span className="material-symbols-outlined text-[13px] leading-none">check_circle</span>
+                            {stagedApprovedCount} approved
+                          </span>
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
+                            <span className="material-symbols-outlined text-[13px] leading-none">error</span>
+                            {stagedRejectedCount} rejected
+                          </span>
+                          {stillPending && (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+                              <span className="material-symbols-outlined text-[13px] leading-none">hourglass_top</span>
+                              Move all pending cards first
+                            </span>
+                          )}
+                        </div>
+                        {hasRejected ? (
+                          <button
+                            type="button"
+                            disabled={stillPending || returnForRework.isPending}
+                            onClick={() => {
+                              setRejectReason("");
+                              setRejectTarget({ sheet: boardSheet, user: board.user });
+                            }}
+                            className={cn(
+                              "inline-flex items-center gap-sm rounded-lg py-2 px-md text-title-md border-t border-white/20 shadow-level-1 transition-all",
+                              !stillPending
+                                ? "bg-rose-600 text-white hover:bg-rose-700"
+                                : "bg-surface-container-low text-on-surface-variant border-outline-variant cursor-not-allowed opacity-70",
+                            )}
+                          >
+                            <span className="material-symbols-outlined text-[18px]">undo</span>
+                            Send back for rework
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={stillPending || approveSheet.isPending}
+                            onClick={() => {
+                              approveSheet.mutate(boardSheet.id, {
+                                onSuccess: () => {
+                                  toast.success(`Approved ${board.user?.fullName ?? "sheet"}'s goals`);
+                                  setStaged((prev) => {
+                                    const next = { ...prev };
+                                    delete next[boardSheet.id];
+                                    return next;
+                                  });
+                                },
+                              });
+                            }}
+                            className={cn(
+                              "inline-flex items-center gap-sm rounded-lg py-2 px-md text-title-md border-t border-white/20 shadow-level-1 transition-all",
+                              !stillPending
+                                ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                                : "bg-surface-container-low text-on-surface-variant border-outline-variant cursor-not-allowed opacity-70",
+                            )}
+                          >
+                            {approveSheet.isPending ? (
+                              <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
+                            ) : (
+                              <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                            )}
+                            Approve sheet
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   {/* Kanban for this employee */}
                   <div
                     className="w-full overflow-x-auto p-md"
@@ -783,101 +878,6 @@ export default function TeamGoalsPage() {
                       })}
                     </div>
                   </div>
-
-                  {/* Bulk action bar — appears once the manager has staged any
-                      goals into approved or rejected. If any goal is rejected
-                      the entire sheet is returned for rework; otherwise the
-                      whole sheet is approved. */}
-                  {(() => {
-                    const candidateGoals = [
-                      ...board.grouped.submitted,
-                      ...board.grouped.approved,
-                      ...board.grouped.rejected,
-                    ];
-                    const boardSheet = candidateGoals
-                      .map((g: any) => sheetByGoalId.get(g.id))
-                      .find((s): s is GoalSheet => Boolean(s));
-                    if (!boardSheet) return null;
-                    const stageForSheet = staged[boardSheet.id] ?? { approved: new Set<string>(), rejected: new Set<string>() };
-                    const stagedApprovedCount = stageForSheet.approved.size;
-                    const stagedRejectedCount = stageForSheet.rejected.size;
-                    const stagedTotal = stagedApprovedCount + stagedRejectedCount;
-                    if (stagedTotal === 0) return null;
-                    // Block action while goals remain in Pending Review.
-                    const stillPending = board.grouped.submitted.some(
-                      (g: any) => g.status === GoalStatus.SUBMITTED || g.status === GoalStatus.UNDER_REVIEW,
-                    );
-                    const hasRejected = stagedRejectedCount > 0;
-                    return (
-                      <div className="px-md py-sm border-t border-outline-variant bg-surface-container/40 flex flex-wrap items-center gap-sm justify-between">
-                        <div className="flex items-center gap-xs text-label-md text-on-surface-variant">
-                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <span className="material-symbols-outlined text-[13px] leading-none">check_circle</span>
-                            {stagedApprovedCount} approved
-                          </span>
-                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
-                            <span className="material-symbols-outlined text-[13px] leading-none">error</span>
-                            {stagedRejectedCount} rejected
-                          </span>
-                          {stillPending && (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
-                              <span className="material-symbols-outlined text-[13px] leading-none">hourglass_top</span>
-                              Move all pending cards first
-                            </span>
-                          )}
-                        </div>
-                        {hasRejected ? (
-                          <button
-                            type="button"
-                            disabled={stillPending || returnForRework.isPending}
-                            onClick={() => {
-                              setRejectReason("");
-                              setRejectTarget({ sheet: boardSheet, user: board.user });
-                            }}
-                            className={cn(
-                              "inline-flex items-center gap-sm rounded-lg py-2 px-md text-title-md border-t border-white/20 shadow-level-1 transition-all",
-                              !stillPending
-                                ? "bg-rose-600 text-white hover:bg-rose-700"
-                                : "bg-surface-container-low text-on-surface-variant border-outline-variant cursor-not-allowed opacity-70",
-                            )}
-                          >
-                            <span className="material-symbols-outlined text-[18px]">undo</span>
-                            Send back for rework
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled={stillPending || approveSheet.isPending}
-                            onClick={() => {
-                              approveSheet.mutate(boardSheet.id, {
-                                onSuccess: () => {
-                                  toast.success(`Approved ${board.user?.fullName ?? "sheet"}'s goals`);
-                                  setStaged((prev) => {
-                                    const next = { ...prev };
-                                    delete next[boardSheet.id];
-                                    return next;
-                                  });
-                                },
-                              });
-                            }}
-                            className={cn(
-                              "inline-flex items-center gap-sm rounded-lg py-2 px-md text-title-md border-t border-white/20 shadow-level-1 transition-all",
-                              !stillPending
-                                ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                                : "bg-surface-container-low text-on-surface-variant border-outline-variant cursor-not-allowed opacity-70",
-                            )}
-                          >
-                            {approveSheet.isPending ? (
-                              <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
-                            ) : (
-                              <span className="material-symbols-outlined text-[18px]">check_circle</span>
-                            )}
-                            Approve sheet
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })()}
                 </section>
               );
             })}

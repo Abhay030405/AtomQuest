@@ -370,6 +370,47 @@ class CheckinService:
 	# Reads
 	# ------------------------------------------------------------------
 
+	async def get_my_checkins(
+		self,
+		current_user: User,
+		quarter: Quarter,
+		cycle_id: UUID,
+		db: AsyncSession,
+	) -> list[dict[str, Any]]:
+		"""Employee view — all check-ins the manager has written for this employee.
+
+		Returns the list of serialisable dicts (no ORM objects) ready to be
+		handed directly to the HTTP layer.
+		"""
+		rbac_service.require_permission(current_user.role, Permission.ACKNOWLEDGE_CHECKIN)
+		checkin_repo = CheckinRepository(db)
+		checkins = await checkin_repo.get_by_employee_quarter(
+			current_user.id, quarter, cycle_id
+		)
+		user_repo = UserRepository(db)
+		out: list[dict[str, Any]] = []
+		for c in checkins:
+			manager = await user_repo.get(c.manager_id)
+			out.append(
+				{
+					"id": c.id,
+					"manager_id": c.manager_id,
+					"manager_name": manager.full_name if manager else None,
+					"employee_id": c.employee_id,
+					"quarter": c.quarter,
+					"cycle_id": c.cycle_id,
+					"comment": c.comment,
+					"comment_type": c.comment_type,
+					"goals_discussed": c.goals_discussed,
+					"overall_rating_sentiment": c.overall_rating_sentiment,
+					"completed_at": c.completed_at,
+					"is_acknowledged_by_employee": c.is_acknowledged_by_employee,
+					"acknowledged_at": c.acknowledged_at,
+					"updated_at": c.updated_at,
+				}
+			)
+		return out
+
 	async def get_team_status(
 		self,
 		current_user: User,

@@ -128,12 +128,10 @@ Service → **Variables** → add each of these (Raw editor is fastest):
 | `ALGORITHM` | `HS256` | ⬜ | Default is already `HS256`. |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `480` | ⬜ | Default `480`. |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `7` | ⬜ | Default `7`. |
-| `RUN_MIGRATIONS` | `true` | ⬜ | Default `true`. Set `false` only to skip the boot-time `alembic upgrade head`. |
+| `RUN_MIGRATIONS` | `true` | ✅ | Keep `true`. Idempotent — a no-op if the DB is already at head; auto-applies future migrations on deploy. |
+| `PORT` | `8000` | ✅ | Pin it. uvicorn binds to this; the public domain must route to the same port (see 3.3). |
 | `WEB_CONCURRENCY` | `1` | ⬜ | uvicorn worker count. Raise for more CPU (see Advanced). |
 | `LOG_LEVEL` | `INFO` | ⬜ | |
-
-Do **not** set `PORT` — Railway injects it automatically and `start.sh`
-reads it.
 
 Generate a strong `SECRET_KEY`:
 
@@ -147,8 +145,10 @@ python -c "import secrets; print(secrets.token_hex(32))"
 > and update it after the frontend is live (Part 5).
 
 ### 3.3 Generate a public domain
-Service → **Settings → Networking → Generate Domain**. Railway gives you
-something like:
+Service → **Settings → Networking → Generate Domain**. Railway asks for a
+**target port** — enter **`8000`** (it must match the `PORT` variable above
+and the port uvicorn binds to; a mismatch causes a 502 / "Application failed
+to respond"). Railway then gives you something like:
 
 ```
 https://atomquest-backend-production.up.railway.app

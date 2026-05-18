@@ -106,13 +106,7 @@ export default function ManagerDashboard() {
             {quarterLabel} — manage your team's goal sheets and approvals.
           </p>
         </div>
-        <Link
-          to={ROUTES.MANAGER.REVIEW(userId)}
-          className="inline-flex items-center gap-sm bg-primary text-on-primary rounded-lg py-2 px-md text-title-md border-t border-white/20 shadow-level-1 hover:opacity-90 transition-all self-start"
-        >
-          <span className="material-symbols-outlined text-[18px]">fact_check</span>
-          Open Approval Queue
-        </Link>
+
       </div>
 
       {/* Bento grid */}

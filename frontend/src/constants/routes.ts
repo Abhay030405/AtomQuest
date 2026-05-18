@@ -6,6 +6,7 @@ export const ROUTES = {
     GOALS: (userId: string) => `/employee/${userId}/goals`,
     GOAL_DETAIL: (userId: string, id: string) => `/employee/${userId}/goals/${id}`,
     QUARTERLY_UPDATE: (userId: string) => `/employee/${userId}/quarterly-update`,
+    MY_CHECKINS: (userId: string) => `/employee/${userId}/my-checkins`,
     PROFILE: (userId: string) => `/employee/${userId}/profile`,
   },
 
@@ -43,6 +44,7 @@ export const ROUTE_PATTERNS = {
     GOALS: "/employee/:userId/goals",
     GOAL_DETAIL: "/employee/:userId/goals/:goalId",
     QUARTERLY_UPDATE: "/employee/:userId/quarterly-update",
+    MY_CHECKINS: "/employee/:userId/my-checkins",
     PROFILE: "/employee/:userId/profile",
   },
   MANAGER: {

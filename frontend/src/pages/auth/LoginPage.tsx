@@ -153,10 +153,8 @@ function RolesView({ theme, onRoleClick }: RolesViewProps) {
 
   const handleMicrosoft = () => {
     setMsLoading(true);
-    setTimeout(() => {
-      setMsLoading(false);
-      toast.info("Microsoft SSO is not configured in this demo.");
-    }, 1400);
+    const apiBase = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
+    window.location.href = `${apiBase}/v1/auth/azure/login`;
   };
 
   return (

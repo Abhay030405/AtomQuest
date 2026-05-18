@@ -75,6 +75,11 @@ async def get_my_quarter(
 					),
 					"weightage": str(entry["goal"].weightage),
 					"status": entry["goal"].status.value,
+					"source_shared_goal_id": (
+						str(entry["goal"].source_shared_goal_id)
+						if entry["goal"].source_shared_goal_id is not None
+						else None
+					),
 				},
 				"achievement": (
 					_serialize(entry["achievement"]).model_dump(mode="json")

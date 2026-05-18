@@ -46,7 +46,6 @@ const NAV_SECTIONS: NavSection[] = [
     initials: "MP",
     items: (userId) => [
       { label: "Dashboard", to: ROUTES.MANAGER.ROOT(userId), icon: "dashboard" },
-      { label: "Approval Queue", to: ROUTES.MANAGER.REVIEW(userId), icon: "fact_check" },
       { label: "Team Goals", to: ROUTES.MANAGER.TEAM_GOALS(userId), icon: "track_changes" },
       { label: "Check-in Module", to: ROUTES.MANAGER.CHECKIN(userId), icon: "event_note" },
     ],
@@ -60,6 +59,7 @@ const NAV_SECTIONS: NavSection[] = [
       { label: "Dashboard", to: ROUTES.EMPLOYEE.ROOT(userId), icon: "dashboard" },
       { label: "My Goals", to: ROUTES.EMPLOYEE.GOALS(userId), icon: "target" },
       { label: "Quarterly Update", to: ROUTES.EMPLOYEE.QUARTERLY_UPDATE(userId), icon: "task_alt" },
+      { label: "My Check-ins", to: ROUTES.EMPLOYEE.MY_CHECKINS(userId), icon: "rate_review" },
     ],
   },
 ];

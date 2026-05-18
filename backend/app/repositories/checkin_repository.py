@@ -44,6 +44,24 @@ class CheckinRepository(BaseRepository[Checkin]):
 		result = await self.session.execute(stmt)
 		return result.scalar_one_or_none()
 
+	async def get_by_employee_quarter(
+		self,
+		employee_id: UUID,
+		quarter: Quarter,
+		cycle_id: UUID,
+	) -> list[Checkin]:
+		"""All check-ins received by an employee for the given quarter/cycle."""
+		stmt = (
+			select(Checkin)
+			.where(Checkin.employee_id == employee_id)
+			.where(Checkin.quarter == quarter)
+			.where(Checkin.cycle_id == cycle_id)
+			.where(Checkin.is_deleted.is_(False))
+			.order_by(Checkin.completed_at.desc().nullslast())
+		)
+		result = await self.session.execute(stmt)
+		return list(result.scalars().all())
+
 	async def get_team_checkins(
 		self, manager_id: UUID, quarter: Quarter, cycle_id: UUID
 	) -> list[Checkin]:

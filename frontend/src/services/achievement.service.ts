@@ -64,6 +64,7 @@ interface ApiQuarterGoal {
     target_date?: string | null;
     weightage: string;
     status: string;
+    source_shared_goal_id?: string | null;
   };
   achievement: ApiAchievement | null;
 }
@@ -89,6 +90,7 @@ export interface QuarterGoalEntry {
   targetDate: string | null;
   weightage: number;
   goalStatus: string;
+  sourceSharedGoalId: string | null;
   achievement: Achievement | null;
 }
 
@@ -149,11 +151,12 @@ function mapQuarterView(d: ApiQuarterView): QuarterView {
     goals: d.goals.map((g) => ({
       goalId: g.goal.id,
       title: g.goal.title,
-      uomType: g.goal.uom_type,
+      uomType: g.goal.uom_type.toUpperCase(),
       targetValue: toNum(g.goal.target_value ?? null),
       targetDate: g.goal.target_date ?? null,
       weightage: toNum(g.goal.weightage) ?? 0,
       goalStatus: g.goal.status,
+      sourceSharedGoalId: g.goal.source_shared_goal_id ?? null,
       achievement: g.achievement ? mapAchievement(g.achievement) : null,
     })),
   };

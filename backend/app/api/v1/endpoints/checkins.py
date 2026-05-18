@@ -26,6 +26,46 @@ def _serialize(checkin) -> CheckinResponse:
 	return CheckinResponse.model_validate(checkin)
 
 
+@router.get("/my", response_model=APIResponse[list[dict]])
+async def get_my_checkins(
+	quarter: Quarter = Query(...),
+	cycle_id: UUID | None = Query(default=None),
+	db: AsyncSession = Depends(get_db),
+	current_user=Depends(require_permission(Permission.ACKNOWLEDGE_CHECKIN)),
+) -> APIResponse[list[dict]]:
+	"""Employee view — returns all check-ins written about the current user."""
+	if cycle_id is None:
+		active = await cycle_service.get_active_window(db)
+		if active is None:
+			raise CycleNotFoundError()
+		cycle_id = active.id
+	rows = await checkin_service.get_my_checkins(current_user, quarter, cycle_id, db)
+	out = [
+		{
+			"id": str(r["id"]),
+			"manager_id": str(r["manager_id"]),
+			"manager_name": r["manager_name"],
+			"employee_id": str(r["employee_id"]),
+			"quarter": r["quarter"].value if hasattr(r["quarter"], "value") else r["quarter"],
+			"cycle_id": str(r["cycle_id"]),
+			"comment": r["comment"],
+			"comment_type": r["comment_type"].value if hasattr(r["comment_type"], "value") else r["comment_type"],
+			"goals_discussed": [str(g) for g in r["goals_discussed"]] if r["goals_discussed"] else None,
+			"overall_rating_sentiment": (
+				r["overall_rating_sentiment"].value
+				if r["overall_rating_sentiment"] is not None and hasattr(r["overall_rating_sentiment"], "value")
+				else r["overall_rating_sentiment"]
+			),
+			"completed_at": r["completed_at"].isoformat() if r["completed_at"] else None,
+			"is_acknowledged_by_employee": r["is_acknowledged_by_employee"],
+			"acknowledged_at": r["acknowledged_at"].isoformat() if r["acknowledged_at"] else None,
+			"updated_at": r["updated_at"].isoformat() if r["updated_at"] else None,
+		}
+		for r in rows
+	]
+	return APIResponse.ok(out)
+
+
 @router.get("/team-status", response_model=APIResponse[list[dict]])
 async def get_team_status(
 	quarter: Quarter = Query(...),

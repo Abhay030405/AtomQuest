@@ -27,6 +27,16 @@ class Settings(BaseSettings):
 	debug: bool | None = None
 	log_level: str = "INFO"
 
+	# Azure AD / Microsoft SSO
+	azure_client_id: str | None = Field(default=None, validation_alias="AZURE_CLIENT_ID")
+	azure_tenant_id: str | None = Field(default=None, validation_alias="AZURE_TENANT_ID")
+	azure_client_secret: str | None = Field(default=None, validation_alias="AZURE_CLIENT_SECRET")
+	azure_redirect_uri: str = Field(
+		default="http://localhost:8080/api/v1/auth/azure/callback",
+		validation_alias="AZURE_REDIRECT_URI",
+	)
+	frontend_url: str = Field(default="http://localhost:5173", validation_alias="FRONTEND_URL")
+
 	model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 	@property
