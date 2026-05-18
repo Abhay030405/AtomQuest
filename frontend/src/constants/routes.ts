@@ -19,6 +19,7 @@ export const ROUTES = {
     REVIEW_GOAL: (userId: string, goalId: string) => `/manager/${userId}/review/${goalId}`,
     CHECKIN: (userId: string) => `/manager/${userId}/checkin`,
     REPORTS: (userId: string) => `/manager/${userId}/reports`,
+    AUDIT: (userId: string) => `/manager/${userId}/audit`,
   },
 
   ADMIN: {
@@ -55,6 +56,7 @@ export const ROUTE_PATTERNS = {
     TEAM_GOAL_DETAIL: "/manager/:userId/team-goals/:teamUserId",
     CHECKIN: "/manager/:userId/checkin",
     REPORTS: "/manager/:userId/reports",
+    AUDIT: "/manager/:userId/audit",
   },
   ADMIN: {
     ROOT: "/admin/:userId",

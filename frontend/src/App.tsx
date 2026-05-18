@@ -23,6 +23,7 @@ const ManagerDashboard = lazy(() => import("@/pages/manager/ManagerDashboard"));
 const GoalReviewPage = lazy(() => import("@/pages/manager/GoalReviewPage"));
 const TeamGoalsPage = lazy(() => import("@/pages/manager/TeamGoalsPage"));
 const CheckinModule = lazy(() => import("@/pages/manager/CheckinModule"));
+const ManagerAuditTrailPage = lazy(() => import("@/pages/manager/AuditTrailPage"));
 
 const AdminDashboard = lazy(() => import("@/pages/admin/AdminDashboard"));
 const PersonnelPage = lazy(() => import("@/pages/admin/PersonnelPage"));
@@ -111,6 +112,7 @@ export default function App() {
               <Route path={ROUTE_PATTERNS.MANAGER.REVIEW_SHEET} element={<GoalReviewPage />} />
               <Route path={ROUTE_PATTERNS.MANAGER.TEAM_GOALS} element={<TeamGoalsPage />} />
               <Route path={ROUTE_PATTERNS.MANAGER.CHECKIN} element={<CheckinModule />} />
+              <Route path={ROUTE_PATTERNS.MANAGER.AUDIT} element={<ManagerAuditTrailPage />} />
             </Route>
           </Route>
 

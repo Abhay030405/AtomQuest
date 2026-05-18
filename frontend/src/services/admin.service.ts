@@ -374,6 +374,29 @@ export const adminService = {
     };
   },
 
+  getTeamAuditLog: async (query: AuditLogQuery = {}): Promise<PaginatedResponse<AuditLog>> => {
+    const { page = 1, pageSize = 20, tableName, action, fromDate, toDate } = query;
+    const params = new URLSearchParams();
+    params.set("page", String(page));
+    params.set("page_size", String(pageSize));
+    if (tableName) params.set("table_name", tableName);
+    if (action) params.set("action", action);
+    if (fromDate) params.set("date_from", fromDate);
+    if (toDate) params.set("date_to", toDate);
+
+    const resp = await apiClient.get<APIResponse<{ items: ApiAuditLog[]; meta: ApiPaginationMeta }>>(
+      `/v1/audit-logs/my-team?${params.toString()}`
+    );
+    const data = await unwrap(resp);
+    return {
+      items: data.items.map(mapAuditLog),
+      total: data.meta.total,
+      page: data.meta.page,
+      pageSize: data.meta.page_size,
+      totalPages: data.meta.total_pages,
+    };
+  },
+
   getOrgStats: (): Promise<OrgStats> =>
     mockRequestOrThrow(() => {
       const goals = db.goals;

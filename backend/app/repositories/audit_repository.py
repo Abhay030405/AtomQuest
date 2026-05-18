@@ -21,6 +21,31 @@ class AuditRepository(BaseRepository[AuditLog]):
 	def __init__(self, session: AsyncSession) -> None:
 		super().__init__(session, AuditLog)
 
+	async def get_filtered_for_actors(
+		self,
+		actor_ids: list[UUID],
+		filters: AuditFilter,
+		skip: int = 0,
+		limit: int = 50,
+	) -> tuple[list[AuditLog], int]:
+		"""Like get_filtered but scoped to a specific set of actor IDs."""
+		stmt = select(AuditLog).options(selectinload(AuditLog.actor))
+		stmt = stmt.where(AuditLog.actor_id.in_(actor_ids))
+		if filters.date_from:
+			stmt = stmt.where(AuditLog.changed_at >= filters.date_from)
+		if filters.date_to:
+			stmt = stmt.where(AuditLog.changed_at <= filters.date_to)
+		if filters.table_name:
+			stmt = stmt.where(AuditLog.table_name == filters.table_name)
+		if filters.action:
+			stmt = stmt.where(AuditLog.action == filters.action)
+
+		count_stmt = select(func.count()).select_from(stmt.subquery())
+		total = int((await self.session.execute(count_stmt)).scalar_one())
+		stmt = stmt.order_by(AuditLog.changed_at.desc()).offset(skip).limit(limit)
+		result = await self.session.execute(stmt)
+		return list(result.scalars().all()), total
+
 	async def log(
 		self,
 		table_name: str,

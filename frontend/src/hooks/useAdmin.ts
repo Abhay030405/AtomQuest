@@ -29,6 +29,13 @@ export function useAdminAuditLog(query: AuditLogQuery = {}) {
   });
 }
 
+export function useManagerTeamAuditLog(query: AuditLogQuery = {}) {
+  return useQuery({
+    queryKey: ["team-audit-log", query],
+    queryFn: () => adminService.getTeamAuditLog(query),
+  });
+}
+
 export function useAdminAllSheets(cycleId?: string) {
   return useQuery({
     queryKey: ["admin-all-sheets", cycleId ?? ""],

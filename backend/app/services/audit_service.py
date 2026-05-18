@@ -11,6 +11,7 @@ from app.models.audit_log import AuditLog
 from app.models.goal import Goal
 from app.models.user import User
 from app.repositories.audit_repository import AuditRepository
+from app.repositories.user_repository import UserRepository
 from app.schemas.audit import AuditFilter
 
 
@@ -110,6 +111,21 @@ class AuditService:
 	) -> tuple[list[AuditLog], int]:
 		repo = AuditRepository(db)
 		return await repo.get_filtered(filters, skip=skip, limit=limit)
+
+	async def get_team_audit_log(
+		self,
+		manager_id: UUID,
+		filters: AuditFilter,
+		skip: int,
+		limit: int,
+		db: AsyncSession,
+	) -> tuple[list[AuditLog], int]:
+		"""Return audit logs scoped to the manager's team + the manager themselves."""
+		user_repo = UserRepository(db)
+		team = await user_repo.get_team(manager_id)
+		actor_ids = [u.id for u in team] + [manager_id]
+		repo = AuditRepository(db)
+		return await repo.get_filtered_for_actors(actor_ids, filters, skip=skip, limit=limit)
 
 
 audit_service = AuditService()

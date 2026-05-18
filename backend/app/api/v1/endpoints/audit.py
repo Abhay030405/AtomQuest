@@ -7,7 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_admin, get_db, get_pagination
+from app.api.deps import get_current_admin, get_current_manager, get_db, get_pagination
 from app.core.constants import AuditAction
 from app.schemas.audit import AuditFilter, AuditLogResponse
 from app.schemas.common import APIResponse, PaginatedData
@@ -76,6 +76,54 @@ async def get_audit_logs(
 		logs = [log for log in logs if log.table_name in group]
 		total = len(logs)
 
+	items = [
+		AuditLogResponse.model_validate(
+			{
+				"id": log.id,
+				"table_name": log.table_name,
+				"record_id": log.record_id,
+				"action": log.action,
+				"field_name": log.field_name,
+				"old_value": log.old_value,
+				"new_value": log.new_value,
+				"actor_id": log.actor_id,
+				"actor_name": log.actor.full_name if getattr(log, "actor", None) else "",
+				"actor_role": log.actor_role,
+				"changed_at": log.changed_at,
+			}
+		)
+		for log in logs
+	]
+	meta = build_pagination_meta(
+		total=total, page=pagination.page, page_size=pagination.page_size
+	)
+	return APIResponse.ok(PaginatedData(items=items, meta=meta))
+
+
+@router.get("/my-team", response_model=APIResponse[PaginatedData[AuditLogResponse]])
+async def get_team_audit_logs(
+	date_from: Optional[datetime] = Query(default=None),
+	date_to: Optional[datetime] = Query(default=None),
+	table_name: Optional[str] = Query(default=None),
+	action: Optional[AuditAction] = Query(default=None),
+	pagination=Depends(get_pagination),
+	db: AsyncSession = Depends(get_db),
+	current_user: object = Depends(get_current_manager),
+) -> APIResponse[PaginatedData[AuditLogResponse]]:
+	"""Audit logs scoped to the calling manager's team (direct reports + self)."""
+	filters = AuditFilter(
+		date_from=date_from,
+		date_to=date_to,
+		table_name=table_name,
+		action=action,
+	)
+	logs, total = await audit_service.get_team_audit_log(
+		manager_id=current_user.id,
+		filters=filters,
+		skip=pagination.skip,
+		limit=pagination.limit,
+		db=db,
+	)
 	items = [
 		AuditLogResponse.model_validate(
 			{

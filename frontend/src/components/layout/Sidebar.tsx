@@ -36,7 +36,6 @@ const NAV_SECTIONS: NavSection[] = [
       { label: "Shared Goals", to: ROUTES.ADMIN.SHARED_GOALS(userId), icon: "domain" },
       { label: "Audit Trail", to: ROUTES.ADMIN.AUDIT(userId), icon: "history" },
       { label: "Reports", to: ROUTES.ADMIN.REPORTS(userId), icon: "analytics" },
-      { label: "Goal Unlock", to: ROUTES.ADMIN.GOAL_UNLOCK(userId), icon: "lock_open_right" },
     ],
   },
   {
@@ -48,6 +47,7 @@ const NAV_SECTIONS: NavSection[] = [
       { label: "Dashboard", to: ROUTES.MANAGER.ROOT(userId), icon: "dashboard" },
       { label: "Team Goals", to: ROUTES.MANAGER.TEAM_GOALS(userId), icon: "track_changes" },
       { label: "Check-in Module", to: ROUTES.MANAGER.CHECKIN(userId), icon: "event_note" },
+      { label: "Audit Trail", to: ROUTES.MANAGER.AUDIT(userId), icon: "manage_search" },
     ],
   },
   {
