@@ -229,7 +229,23 @@ class GoalService:
 			db,
 		)
 		await db.commit()
-		await db.refresh(sheet)
+		# Re-fetch with all relationships eager-loaded; otherwise the response
+		# builder triggers async lazy loads (cycle, owner, approver, goals.owner,
+		# goals.locker, goals.goal_sheet) which raises MissingGreenlet.
+		stmt = (
+			select(GoalSheet)
+			.options(
+				selectinload(GoalSheet.goals).selectinload(Goal.owner),
+				selectinload(GoalSheet.goals).selectinload(Goal.locker),
+				selectinload(GoalSheet.goals).selectinload(Goal.goal_sheet),
+				selectinload(GoalSheet.owner),
+				selectinload(GoalSheet.approver),
+				selectinload(GoalSheet.cycle),
+			)
+			.where(GoalSheet.id == sheet.id)
+		)
+		result = await db.execute(stmt)
+		sheet = result.scalar_one()
 		return sheet
 
 	async def submit_goal(self, goal_id: UUID, user: User, db: AsyncSession) -> Goal:

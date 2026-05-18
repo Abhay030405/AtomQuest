@@ -36,6 +36,7 @@ export interface User {
   departmentId: string;
   departmentName: string;
   employeeCode: string;
+  phoneNumber?: string;
   isActive: boolean;
   permissions: Permission[];
   avatarInitials: string;

@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { useAllGoals } from "@/hooks/useGoals";
 import {
@@ -12,6 +13,7 @@ import { useCycleStore } from "@/store/cycleStore";
 import { GoalStatus } from "@/types/goal.types";
 import type { Goal, UoMType } from "@/types/goal.types";
 import { UOM_TYPE_META } from "@/constants/uomTypes";
+import { ROUTES } from "@/constants/routes";
 import { formatThrustArea } from "@/utils/format.util";
 import { cn } from "@/lib/utils";
 import {
@@ -20,6 +22,12 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 type ColumnId = "draft" | "submitted" | "approved" | "rejected";
 
@@ -426,6 +434,8 @@ function FilterPicker({
 }
 
 export default function PersonnelPage() {
+  const navigate = useNavigate();
+  const { userId: adminId = "" } = useParams<{ userId: string }>();
   const { activeWindow } = useCycleStore();
   const cycleLabel = activeWindow?.cycleName ?? "Current Cycle";
   const cycleId = activeWindow?.id ?? "";
@@ -526,7 +536,6 @@ export default function PersonnelPage() {
           pendingCount: pending,
         };
       })
-      .filter((o) => !o.subtitle.startsWith("0 report"))
       .sort((a, b) => {
         if (a.pendingCount !== b.pendingCount) return b.pendingCount - a.pendingCount;
         return a.fullName.localeCompare(b.fullName);
@@ -623,6 +632,28 @@ export default function PersonnelPage() {
             pending card to approve or return it.
           </p>
         </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="inline-flex items-center gap-xs px-lg py-sm bg-primary text-on-primary rounded-lg text-label-lg font-medium hover:opacity-90 transition shrink-0"
+            >
+              <span className="material-symbols-outlined text-[18px]">person_add</span>
+              Add New Personnel
+              <span className="material-symbols-outlined text-[18px]">expand_more</span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-[200px]">
+            <DropdownMenuItem onSelect={() => navigate(ROUTES.ADMIN.PERSONNEL_NEW_MANAGER(adminId))}>
+              <span className="material-symbols-outlined text-[18px] mr-xs">supervisor_account</span>
+              Add New Manager
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => navigate(ROUTES.ADMIN.PERSONNEL_NEW_EMPLOYEE(adminId))}>
+              <span className="material-symbols-outlined text-[18px] mr-xs">badge</span>
+              Add New Employee
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Filters — two connected dropdowns: Managers → Employees */}

@@ -9,6 +9,7 @@ from app.api.v1.endpoints import (
 	audit,
 	auth,
 	checkins,
+	departments,
 	goal_versions,
 	goals,
 	notifications,
@@ -26,6 +27,7 @@ api_router.include_router(goal_versions.router, prefix="/goals", tags=["Goal His
 api_router.include_router(approvals.router, prefix="/approvals", tags=["Approvals"])
 api_router.include_router(shared_goals.router, prefix="/shared-goals", tags=["Shared Goals"])
 api_router.include_router(users.router, prefix="/users", tags=["Users"])
+api_router.include_router(departments.router, prefix="/departments", tags=["Departments"])
 api_router.include_router(admin.router, prefix="/admin", tags=["Admin"])
 api_router.include_router(
 	achievements.router, prefix="/achievements", tags=["Achievements"]

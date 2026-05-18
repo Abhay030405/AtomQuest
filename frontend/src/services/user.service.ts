@@ -8,6 +8,8 @@ interface ApiUserListItem {
   full_name: string;
   role: string;
   employee_code?: string | null;
+  phone_number?: string | null;
+  department_id?: string | null;
   department_name?: string | null;
   manager_name?: string | null;
   is_active: boolean;
@@ -18,6 +20,26 @@ interface ApiUserResponse extends ApiUserListItem {
   manager_id?: string | null;
   permissions?: string[];
   created_at?: string;
+}
+
+export interface Department {
+  id: string;
+  name: string;
+}
+
+interface ApiDepartment {
+  id: string;
+  name: string;
+}
+
+export interface CreateUserInput {
+  email: string;
+  fullName: string;
+  password: string;
+  role: UserRole;
+  departmentId: string;
+  managerId?: string;
+  phoneNumber?: string;
 }
 
 function initials(name: string): string {
@@ -36,9 +58,10 @@ function mapListUser(u: ApiUserListItem): User {
     email: u.email,
     fullName: u.full_name,
     role: u.role as UserRole,
-    departmentId: "",
+    departmentId: u.department_id ?? "",
     departmentName: u.department_name ?? "",
     employeeCode: u.employee_code ?? "",
+    phoneNumber: u.phone_number ?? undefined,
     managerName: u.manager_name ?? undefined,
     isActive: u.is_active,
     permissions: [],
@@ -55,6 +78,7 @@ function mapFullUser(u: ApiUserResponse): User {
     departmentId: u.department_id ?? "",
     departmentName: u.department_name ?? "",
     employeeCode: u.employee_code ?? "",
+    phoneNumber: u.phone_number ?? undefined,
     managerId: u.manager_id ?? undefined,
     managerName: u.manager_name ?? undefined,
     isActive: u.is_active,
@@ -93,4 +117,25 @@ export const userService = {
     if (!resp.success) return null;
     return resp.data ? mapFullUser(resp.data) : null;
   },
+
+  getDepartments: async (): Promise<Department[]> => {
+    const resp = await apiClient.get<APIResponse<ApiDepartment[]>>("/v1/departments/");
+    const data = unwrap(resp, "Failed to load departments");
+    return data.map((d) => ({ id: d.id, name: d.name }));
+  },
+
+  createUser: async (input: CreateUserInput): Promise<User> => {
+    const body: Record<string, unknown> = {
+      email: input.email,
+      full_name: input.fullName,
+      password: input.password,
+      role: input.role,
+      department_id: input.departmentId,
+      phone_number: input.phoneNumber ?? null,
+    };
+    if (input.managerId) body.manager_id = input.managerId;
+    const resp = await apiClient.post<APIResponse<ApiUserResponse>>("/v1/users/", body);
+    return mapFullUser(unwrap(resp, "Failed to create user"));
+  },
 };
+

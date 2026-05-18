@@ -1,13 +1,12 @@
 import { useState, useMemo } from "react";
 import { useAllGoals } from "@/hooks/useGoals";
 import { useAdminAllSheets } from "@/hooks/useAdmin";
+import { useCycleStore } from "@/store/cycleStore";
 import { mockUsers } from "@/mocks/mockUsers";
 import { GoalStatus } from "@/types/goal.types";
 import { UserRole } from "@/types/user.types";
 import { formatDate } from "@/utils/date.util";
 import { cn } from "@/lib/utils";
-
-const CYCLE_ID = "cycle-fy2026";
 
 const SHEET_STATUS_CHIP: Record<string, { cls: string; label: string }> = {
   approved:     { cls: "bg-tertiary/10 text-tertiary", label: "Approved" },
@@ -28,8 +27,9 @@ const CHART_BARS = [
 ];
 
 export default function ReportsPage() {
-  const { data: allGoals = [], isLoading: goalsLoading } = useAllGoals(CYCLE_ID);
-  const { data: allSheetsRes, isLoading: sheetsLoading } = useAdminAllSheets(CYCLE_ID);
+  const cycleId = useCycleStore((s) => s.activeWindow?.id ?? "");
+  const { data: allGoals = [], isLoading: goalsLoading } = useAllGoals(cycleId);
+  const { data: allSheetsRes, isLoading: sheetsLoading } = useAdminAllSheets(cycleId);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");

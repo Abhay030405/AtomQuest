@@ -21,6 +21,7 @@ class User(BaseModel):
 	manager_id = Column(PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 	department_id = Column(PG_UUID(as_uuid=True), ForeignKey("departments.id"), nullable=True)
 	employee_code = Column(String(50), unique=True, nullable=True)
+	phone_number = Column(String(20), nullable=True)
 	is_active = Column(Boolean, default=True, nullable=False)
 
 	manager = relationship("User", remote_side="User.id", back_populates="direct_reports")

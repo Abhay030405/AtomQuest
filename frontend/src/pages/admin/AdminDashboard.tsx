@@ -1,14 +1,13 @@
 import { Link } from "react-router-dom";
 import { useOrgStats, useAdminAuditLog, useAdminAllSheets } from "@/hooks/useAdmin";
 import { useAuth } from "@/hooks/useAuth";
+import { useCycleStore } from "@/store/cycleStore";
 import { ROUTES } from "@/constants/routes";
 import { timeAgo } from "@/utils/date.util";
 import { getRoleDisplayName } from "@/utils/permission.util";
 import { AuditAction } from "@/types/audit.types";
 import { GoalStatus } from "@/types/goal.types";
 import { cn } from "@/lib/utils";
-
-const CYCLE_ID = "cycle-fy2026";
 
 const DEPT_COMPLIANCE = [
   { name: "Engineering", pct: 92 },
@@ -21,9 +20,10 @@ const DEPT_COMPLIANCE = [
 export default function AdminDashboard() {
   const { currentUser } = useAuth();
   const userId = currentUser?.id ?? "";
+  const cycleId = useCycleStore((s) => s.activeWindow?.id ?? "");
   const { data: stats, isLoading: statsLoading } = useOrgStats();
   const { data: auditPage, isLoading: auditLoading } = useAdminAuditLog({ pageSize: 6 });
-  const { data: allSheetsRes, isLoading: sheetsLoading } = useAdminAllSheets(CYCLE_ID);
+  const { data: allSheetsRes, isLoading: sheetsLoading } = useAdminAllSheets(cycleId);
 
   const isLoading = statsLoading || auditLoading || sheetsLoading;
   void allSheetsRes;

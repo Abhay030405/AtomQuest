@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 	secret_key: str = Field(..., validation_alias="SECRET_KEY")
 
 	algorithm: str = "HS256"
-	access_token_expire_minutes: int = 15
+	access_token_expire_minutes: int = 480
 	refresh_token_expire_days: int = 7
 
 	cors_origins: List[str] = []

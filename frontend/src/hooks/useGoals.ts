@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { goalService } from "@/services/goal.service";
 import { approvalService } from "@/services/approval.service";
 import type { Goal } from "@/types/goal.types";
@@ -45,7 +46,8 @@ export function useCreateGoal() {
   return useMutation({
     mutationFn: (payload: Omit<Goal, "id" | "version" | "status" | "isShared" | "createdAt" | "updatedAt">) =>
       goalService.createGoal(payload),
-    onSuccess: () => {
+    onSuccess: (goal) => {
+      toast.success(`Goal "${goal.title}" created successfully`);
       qc.invalidateQueries({ queryKey: ["my-goals", currentUser?.id] });
       qc.invalidateQueries({ queryKey: ["my-sheet", currentUser?.id] });
     },
@@ -131,7 +133,8 @@ export function useTeamGoals(cycleId?: string) {
 
 export function useAllGoals(cycleId?: string) {
   return useQuery({
-    queryKey: ["all-goals", cycleId],
+    queryKey: ["all-goals", cycleId ?? ""],
     queryFn: () => goalService.getAllGoals(cycleId),
+    enabled: Boolean(cycleId),
   });
 }

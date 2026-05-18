@@ -31,8 +31,9 @@ export function useAdminAuditLog(query: AuditLogQuery = {}) {
 
 export function useAdminAllSheets(cycleId?: string) {
   return useQuery({
-    queryKey: ["admin-all-sheets", cycleId],
+    queryKey: ["admin-all-sheets", cycleId ?? ""],
     queryFn: () => goalService.getAllSheets(cycleId),
+    enabled: Boolean(cycleId),
   });
 }
 

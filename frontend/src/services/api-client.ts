@@ -49,9 +49,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     let message: string | undefined;
     if (isJson && body && typeof body === "object") {
-      const b = body as { error?: { message?: string } | string; message?: string; detail?: unknown };
-      if (typeof b.error === "object" && b.error?.message) message = b.error.message;
-      else if (typeof b.error === "string") message = b.error;
+      const b = body as {
+        error?: { message?: string; field?: string; code?: string } | string;
+        message?: string;
+        detail?: unknown;
+      };
+      if (typeof b.error === "object" && b.error?.message) {
+        message = b.error.message;
+        if (b.error.field) message = `${message} (${b.error.field})`;
+      } else if (typeof b.error === "string") message = b.error;
       else if (b.message) message = b.message;
       else if (typeof b.detail === "string") message = b.detail;
       else if (Array.isArray(b.detail) && b.detail.length > 0) {
@@ -61,6 +67,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
           const loc = Array.isArray(first.loc) ? first.loc.join(".") : "";
           message = loc ? `${loc}: ${first.msg}` : first.msg;
         }
+      }
+      // Surface the raw error body in console for debugging — invaluable for
+      // tracking down why the backend rejected the request when the toast
+      // message is generic ("Validation error").
+      if (res.status >= 400) {
+        console.error(`[apiClient] ${res.status} ${path}`, body);
       }
     }
     throw new Error(message ?? res.statusText ?? `API error ${res.status}`);

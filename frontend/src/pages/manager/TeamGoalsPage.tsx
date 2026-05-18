@@ -95,7 +95,11 @@ function TeamGoalKanbanCard({ goal, column, onView, onEdit, onDragStart, onDragE
   const weightage = Math.max(0, Math.min(100, Number(goal.weightage) || 0));
   const rejectionNote = column === "rejected" ? goal.managerComment : null;
   const uomMeta = UOM_TYPE_META[goal.uomType as UoMType];
-  const draggable = column === "submitted";
+  // A card is draggable while it's under manager review (server status
+  // SUBMITTED or UNDER_REVIEW) — regardless of which staging column it
+  // currently sits in. Locked / approved-on-server / draft cards are not.
+  const draggable =
+    goal.status === GoalStatus.SUBMITTED || goal.status === GoalStatus.UNDER_REVIEW;
 
   return (
     <div
@@ -440,10 +444,29 @@ export default function TeamGoalsPage() {
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
 
   // Action dialog state
-  const [approveTarget, setApproveTarget] = useState<{ sheet: GoalSheet; user?: UserInfo } | null>(null);
   const [rejectTarget, setRejectTarget] = useState<{ sheet: GoalSheet; user?: UserInfo } | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [editTarget, setEditTarget] = useState<{ goal: any; sheet: GoalSheet } | null>(null);
+
+  // Per-sheet local staging produced by drag-and-drop. The backend has no
+  // per-goal approve/reject concept (only sheet-level approve / return-for-
+  // rework), so we track the manager's intent client-side. On Approve we call
+  // approveSheet (locks every goal). On Send-for-rework we call
+  // returnForRework which sends the whole sheet back to draft.
+  const [staged, setStaged] = useState<Record<string, { approved: Set<string>; rejected: Set<string> }>>({});
+
+  const stageGoal = (sheetId: string, goalId: string, target: "approved" | "rejected" | "submitted") => {
+    setStaged((prev) => {
+      const current = prev[sheetId] ?? { approved: new Set<string>(), rejected: new Set<string>() };
+      const approved = new Set(current.approved);
+      const rejected = new Set(current.rejected);
+      approved.delete(goalId);
+      rejected.delete(goalId);
+      if (target === "approved") approved.add(goalId);
+      else if (target === "rejected") rejected.add(goalId);
+      return { ...prev, [sheetId]: { approved, rejected } };
+    });
+  };
 
   const isLoading = goalsLoading || reportsLoading;
 
@@ -532,7 +555,16 @@ export default function TeamGoalsPage() {
         };
         byUser.set(g.userId, b);
       }
-      b.grouped[c].push(g);
+      // Apply staging overlay: a goal originally in "submitted" can be
+      // visually moved to "approved" or "rejected" by drag-and-drop.
+      const sheetId = sheetByGoalId.get(g.id)?.id;
+      const stagedForSheet = sheetId ? staged[sheetId] : undefined;
+      let displayCol: ColumnId = c;
+      if (stagedForSheet) {
+        if (stagedForSheet.approved.has(g.id)) displayCol = "approved";
+        else if (stagedForSheet.rejected.has(g.id)) displayCol = "rejected";
+      }
+      b.grouped[displayCol].push(g);
       b.total += 1;
       b.weightageSum += Number(g.weightage) || 0;
     }
@@ -543,7 +575,7 @@ export default function TeamGoalsPage() {
       if (ap !== bp) return ap - bp;
       return (a.user?.fullName ?? "").localeCompare(b.user?.fullName ?? "");
     });
-  }, [filtered, usersById]);
+  }, [filtered, usersById, staged, sheetByGoalId]);
 
   return (
     <div className="p-margin-mobile md:p-margin-desktop max-w-[1440px] mx-auto w-full space-y-xl">
@@ -678,7 +710,7 @@ export default function TeamGoalsPage() {
                       {COLUMNS.map((col) => {
                         const items = board.grouped[col.id];
                         const dropKey = `${board.userId}:${col.id}`;
-                        const isDropTarget = col.id === "approved" || col.id === "rejected";
+                        const isDropTarget = col.id === "approved" || col.id === "rejected" || col.id === "submitted";
                         const isHovered = dragOverKey === dropKey && isDropTarget;
                         return (
                           <div
@@ -703,17 +735,16 @@ export default function TeamGoalsPage() {
                               if (!id || !isDropTarget) return;
                               const sheet = sheetByGoalId.get(id);
                               if (!sheet || sheet.userId !== board.userId) return;
-                              if (col.id === "approved") {
-                                setApproveTarget({ sheet, user: board.user });
-                              } else {
-                                setRejectReason("");
-                                setRejectTarget({ sheet, user: board.user });
-                              }
+                              // Just stage locally — no per-drag confirmation.
+                              // The bulk Approve / Send-for-rework button
+                              // commits everything at once for the sheet.
+                              stageGoal(sheet.id, id, col.id as "approved" | "rejected" | "submitted");
                             }}
                             className={cn(
                               "rounded-xl border border-outline-variant bg-surface-container-lowest flex flex-col overflow-hidden transition-all",
                               isHovered && col.id === "approved" && "ring-2 ring-emerald-400 border-emerald-300 bg-emerald-50/40",
                               isHovered && col.id === "rejected" && "ring-2 ring-rose-400 border-rose-300 bg-rose-50/40",
+                              isHovered && col.id === "submitted" && "ring-2 ring-blue-400 border-blue-300 bg-blue-50/40",
                             )}
                           >
                             <div className="px-3 py-2.5 border-b border-outline-variant flex items-center justify-between">
@@ -752,6 +783,101 @@ export default function TeamGoalsPage() {
                       })}
                     </div>
                   </div>
+
+                  {/* Bulk action bar — appears once the manager has staged any
+                      goals into approved or rejected. If any goal is rejected
+                      the entire sheet is returned for rework; otherwise the
+                      whole sheet is approved. */}
+                  {(() => {
+                    const candidateGoals = [
+                      ...board.grouped.submitted,
+                      ...board.grouped.approved,
+                      ...board.grouped.rejected,
+                    ];
+                    const boardSheet = candidateGoals
+                      .map((g: any) => sheetByGoalId.get(g.id))
+                      .find((s): s is GoalSheet => Boolean(s));
+                    if (!boardSheet) return null;
+                    const stageForSheet = staged[boardSheet.id] ?? { approved: new Set<string>(), rejected: new Set<string>() };
+                    const stagedApprovedCount = stageForSheet.approved.size;
+                    const stagedRejectedCount = stageForSheet.rejected.size;
+                    const stagedTotal = stagedApprovedCount + stagedRejectedCount;
+                    if (stagedTotal === 0) return null;
+                    // Block action while goals remain in Pending Review.
+                    const stillPending = board.grouped.submitted.some(
+                      (g: any) => g.status === GoalStatus.SUBMITTED || g.status === GoalStatus.UNDER_REVIEW,
+                    );
+                    const hasRejected = stagedRejectedCount > 0;
+                    return (
+                      <div className="px-md py-sm border-t border-outline-variant bg-surface-container/40 flex flex-wrap items-center gap-sm justify-between">
+                        <div className="flex items-center gap-xs text-label-md text-on-surface-variant">
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <span className="material-symbols-outlined text-[13px] leading-none">check_circle</span>
+                            {stagedApprovedCount} approved
+                          </span>
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
+                            <span className="material-symbols-outlined text-[13px] leading-none">error</span>
+                            {stagedRejectedCount} rejected
+                          </span>
+                          {stillPending && (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+                              <span className="material-symbols-outlined text-[13px] leading-none">hourglass_top</span>
+                              Move all pending cards first
+                            </span>
+                          )}
+                        </div>
+                        {hasRejected ? (
+                          <button
+                            type="button"
+                            disabled={stillPending || returnForRework.isPending}
+                            onClick={() => {
+                              setRejectReason("");
+                              setRejectTarget({ sheet: boardSheet, user: board.user });
+                            }}
+                            className={cn(
+                              "inline-flex items-center gap-sm rounded-lg py-2 px-md text-title-md border-t border-white/20 shadow-level-1 transition-all",
+                              !stillPending
+                                ? "bg-rose-600 text-white hover:bg-rose-700"
+                                : "bg-surface-container-low text-on-surface-variant border-outline-variant cursor-not-allowed opacity-70",
+                            )}
+                          >
+                            <span className="material-symbols-outlined text-[18px]">undo</span>
+                            Send back for rework
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={stillPending || approveSheet.isPending}
+                            onClick={() => {
+                              approveSheet.mutate(boardSheet.id, {
+                                onSuccess: () => {
+                                  toast.success(`Approved ${board.user?.fullName ?? "sheet"}'s goals`);
+                                  setStaged((prev) => {
+                                    const next = { ...prev };
+                                    delete next[boardSheet.id];
+                                    return next;
+                                  });
+                                },
+                              });
+                            }}
+                            className={cn(
+                              "inline-flex items-center gap-sm rounded-lg py-2 px-md text-title-md border-t border-white/20 shadow-level-1 transition-all",
+                              !stillPending
+                                ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                                : "bg-surface-container-low text-on-surface-variant border-outline-variant cursor-not-allowed opacity-70",
+                            )}
+                          >
+                            {approveSheet.isPending ? (
+                              <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
+                            ) : (
+                              <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                            )}
+                            Approve sheet
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </section>
               );
             })}
@@ -884,8 +1010,22 @@ export default function TeamGoalsPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => { setApproveTarget({ sheet, user: owner }); setViewGoal(null); }}
-                        className="inline-flex items-center gap-1.5 px-md py-2 rounded-lg bg-emerald-600 text-white text-title-sm shadow-level-1 border-t border-white/20 hover:opacity-90"
+                        disabled={approveSheet.isPending}
+                        onClick={() => {
+                          const sid = sheet.id;
+                          approveSheet.mutate(sid, {
+                            onSuccess: () => {
+                              toast.success(`Approved ${owner?.fullName ?? "sheet"}'s goals`);
+                              setStaged((prev) => {
+                                const next = { ...prev };
+                                delete next[sid];
+                                return next;
+                              });
+                              setViewGoal(null);
+                            },
+                          });
+                        }}
+                        className="inline-flex items-center gap-1.5 px-md py-2 rounded-lg bg-emerald-600 text-white text-title-sm shadow-level-1 border-t border-white/20 hover:opacity-90 disabled:opacity-60"
                       >
                         <span className="material-symbols-outlined text-[16px]">check_circle</span>
                         Approve sheet
@@ -907,28 +1047,6 @@ export default function TeamGoalsPage() {
         </SheetContent>
       </Sheet>
 
-      {/* Approve confirmation dialog */}
-      {approveTarget && (
-        <ConfirmDialog
-          tone="success"
-          icon="check_circle"
-          title={`Approve ${approveTarget.user?.fullName ?? "this employee"}'s goal sheet?`}
-          message={`This will approve all ${approveTarget.sheet.goals?.length ?? 0} goal(s) on the sheet. The employee will be notified.`}
-          confirmLabel="Approve sheet"
-          loading={approveSheet.isPending}
-          onCancel={() => setApproveTarget(null)}
-          onConfirm={() => {
-            const id = approveTarget.sheet.id;
-            approveSheet.mutate(id, {
-              onSuccess: () => {
-                toast.success(`Approved ${approveTarget.user?.fullName ?? "sheet"}'s goals`);
-                setApproveTarget(null);
-              },
-            });
-          }}
-        />
-      )}
-
       {/* Reject feedback dialog */}
       {rejectTarget && (
         <RejectDialog
@@ -940,17 +1058,23 @@ export default function TeamGoalsPage() {
           onCancel={() => { setRejectTarget(null); setRejectReason(""); }}
           onSubmit={() => {
             const trimmed = rejectReason.trim();
-            if (trimmed.length < 10) {
-              toast.error("Feedback must be at least 10 characters");
+            if (trimmed.length < 20) {
+              toast.error("Feedback must be at least 20 characters");
               return;
             }
+            const sheetId = rejectTarget.sheet.id;
             returnForRework.mutate(
-              { sheetId: rejectTarget.sheet.id, reason: trimmed },
+              { sheetId, reason: trimmed },
               {
                 onSuccess: () => {
                   toast.success(`Returned to ${rejectTarget.user?.fullName ?? "employee"} for rework`);
                   setRejectTarget(null);
                   setRejectReason("");
+                  setStaged((prev) => {
+                    const next = { ...prev };
+                    delete next[sheetId];
+                    return next;
+                  });
                 },
               }
             );
@@ -983,69 +1107,6 @@ export default function TeamGoalsPage() {
   );
 }
 // ─── Dialog components ────────────────────────────────────────────────────────
-
-interface ConfirmDialogProps {
-  tone: 'success' | 'danger' | 'info';
-  icon: string;
-  title: string;
-  message: string;
-  confirmLabel: string;
-  loading?: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-}
-
-function ConfirmDialog({ tone, icon, title, message, confirmLabel, loading, onCancel, onConfirm }: Readonly<ConfirmDialogProps>) {
-  const toneCls = tone === 'success'
-    ? { ring: 'bg-emerald-100 text-emerald-600', btn: 'bg-emerald-600 hover:bg-emerald-700' }
-    : tone === 'danger'
-    ? { ring: 'bg-rose-100 text-rose-600', btn: 'bg-rose-600 hover:bg-rose-700' }
-    : { ring: 'bg-primary-container text-on-primary-container', btn: 'bg-primary hover:opacity-90' };
-  return (
-    <button
-      type='button'
-      onClick={onCancel}
-      aria-label='Close dialog'
-      className='fixed inset-0 z-50 bg-scrim/40 backdrop-blur-sm flex items-center justify-center p-md animate-in fade-in'
-    >
-      <div
-        role='dialog'
-        aria-modal='true'
-        onClick={(e) => e.stopPropagation()}
-        className='w-full max-w-md bg-surface-container-lowest rounded-2xl border border-outline-variant shadow-level-3 overflow-hidden animate-in zoom-in-95'
-      >
-        <div className='px-lg pt-lg pb-md flex items-start gap-md'>
-          <span className={`inline-flex items-center justify-center w-11 h-11 rounded-full shrink-0 ${toneCls.ring}`}>
-            <span className='material-symbols-outlined text-[24px]'>{icon}</span>
-          </span>
-          <div className='min-w-0 flex-1'>
-            <h3 className='text-title-lg text-on-surface mb-1'>{title}</h3>
-            <p className='text-body-md text-on-surface-variant leading-relaxed'>{message}</p>
-          </div>
-        </div>
-        <div className='px-lg py-md bg-surface-container/40 flex justify-end gap-sm'>
-          <button
-            type='button'
-            onClick={onCancel}
-            disabled={loading}
-            className='px-md py-2 rounded-lg text-title-sm text-on-surface hover:bg-surface-container-low disabled:opacity-50'
-          >
-            Cancel
-          </button>
-          <button
-            type='button'
-            onClick={onConfirm}
-            disabled={loading}
-            className={`px-md py-2 rounded-lg text-title-sm text-white shadow-level-1 border-t border-white/20 disabled:opacity-50 inline-flex items-center gap-1.5 ${toneCls.btn}`}
-          >
-            {loading && <span className='material-symbols-outlined animate-spin text-[16px]'>progress_activity</span>}
-            {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </button>
-  );
-}
 
 interface RejectDialogProps {
   employeeName: string;

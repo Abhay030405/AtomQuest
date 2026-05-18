@@ -23,6 +23,8 @@ export const ROUTES = {
   ADMIN: {
     ROOT: (userId: string) => `/admin/${userId}`,
     PERSONNEL: (userId: string) => `/admin/${userId}/personnel`,
+    PERSONNEL_NEW_EMPLOYEE: (userId: string) => `/admin/${userId}/personnel/new-employee`,
+    PERSONNEL_NEW_MANAGER: (userId: string) => `/admin/${userId}/personnel/new-manager`,
     USERS: (userId: string) => `/admin/${userId}/users`,
     USER_DETAIL: (userId: string, id: string) => `/admin/${userId}/users/${id}`,
     CYCLES: (userId: string) => `/admin/${userId}/cycles`,
@@ -55,6 +57,8 @@ export const ROUTE_PATTERNS = {
   ADMIN: {
     ROOT: "/admin/:userId",
     PERSONNEL: "/admin/:userId/personnel",
+    PERSONNEL_NEW_EMPLOYEE: "/admin/:userId/personnel/new-employee",
+    PERSONNEL_NEW_MANAGER: "/admin/:userId/personnel/new-manager",
     USERS: "/admin/:userId/users",
     USER_DETAIL: "/admin/:userId/users/:targetUserId",
     CYCLES: "/admin/:userId/cycles",

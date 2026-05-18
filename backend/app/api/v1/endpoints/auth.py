@@ -29,6 +29,7 @@ def _build_user_response(user) -> UserResponse:
 			"role": user.role,
 			"department_id": user.department_id,
 			"employee_code": user.employee_code,
+			"phone_number": user.phone_number,
 			"manager_id": user.manager_id,
 			"manager_name": user.manager.full_name if getattr(user, "manager", None) else None,
 			"department_name": user.department.name if getattr(user, "department", None) else None,

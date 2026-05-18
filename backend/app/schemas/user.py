@@ -16,6 +16,7 @@ class UserBase(BaseSchema):
 	full_name: str
 	role: UserRole
 	department_id: Optional[UUID] = None
+	phone_number: Optional[str] = Field(default=None, max_length=20)
 
 
 class UserCreate(UserBase):
@@ -38,6 +39,7 @@ class UserUpdate(BaseSchema):
 	full_name: Optional[str] = None
 	department_id: Optional[UUID] = None
 	manager_id: Optional[UUID] = None
+	phone_number: Optional[str] = Field(default=None, max_length=20)
 	is_active: Optional[bool] = None
 
 
@@ -58,6 +60,8 @@ class UserListResponse(BaseSchema):
 	full_name: str
 	role: UserRole
 	employee_code: Optional[str] = None
+	phone_number: Optional[str] = None
+	department_id: Optional[UUID] = None
 	department_name: Optional[str] = None
 	manager_name: Optional[str] = None
 	is_active: bool

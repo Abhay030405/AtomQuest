@@ -1,0 +1,25 @@
+# Secrets must come from Railway env vars, never baked into the image
+.env
+.env.*
+!.env.example
+
+# Python caches / virtualenvs
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+.coverage
+htmlcov
+
+# Tests are not needed in the runtime image
+tests
+
+# VCS / editor / misc
+.git
+.gitignore
+*.log
+*.md
+dist

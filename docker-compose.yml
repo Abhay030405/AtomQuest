@@ -1,0 +1,71 @@
+# ---------------------------------------------------------------------------
+# Local full-stack run of the production images, pointed at the SAME database
+# defined in backend/.env (the shared Neon DB) so existing accounts work.
+#
+#   BACKEND_PORT=8080 docker compose up --build
+#
+#   Frontend  -> http://localhost:5173
+#   Backend   -> http://localhost:8080   (docs at /docs)
+#   Database  -> whatever DATABASE_URL is in backend/.env (Neon)
+#
+# Notes:
+#  * No local Postgres — the backend reads backend/.env via env_file, exactly
+#    like running uvicorn locally. Existing users (e.g. vikram@atomberg.com)
+#    are present because it's your real Neon database.
+#  * RUN_MIGRATIONS is forced off here: the Neon schema already exists, so we
+#    do NOT mutate the shared database from a local container.
+#  * To run instead against a throwaway LOCAL Postgres, see the commented
+#    "db" service / DATABASE_URL override at the bottom of this file.
+# ---------------------------------------------------------------------------
+services:
+  backend:
+    build:
+      context: ./backend
+    # Pull DATABASE_URL / SECRET_KEY / CORS_ORIGINS / etc. straight from .env
+    env_file:
+      - ./backend/.env
+    environment:
+      # Overrides that take precedence over env_file:
+      RUN_MIGRATIONS: "false"   # schema already on Neon — don't touch it
+      PORT: "8000"              # in-container port (mapped to host below)
+    # Host port is configurable to avoid clashes with other local projects:
+    #   BACKEND_PORT=8080 FRONTEND_PORT=5174 docker compose up
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Browser (host) calls the backend on its published host port.
+        # CORS_ORIGINS in backend/.env must include this frontend origin.
+        VITE_API_URL: http://localhost:${BACKEND_PORT:-8000}/api
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    depends_on:
+      - backend
+
+# ---------------------------------------------------------------------------
+# OPTIONAL: throwaway local Postgres instead of Neon.
+# Uncomment this block, add `DATABASE_URL` + `DB_SSL: "false"` under the
+# backend `environment:` key, add a `depends_on: { db: { condition:
+# service_healthy } }` to backend, then seed with:
+#   docker compose exec backend python scripts/seed_data.py
+#
+#  db:
+#    image: postgres:16-alpine
+#    environment:
+#      POSTGRES_USER: atomquest
+#      POSTGRES_PASSWORD: atomquest
+#      POSTGRES_DB: atomquest
+#    ports: ["5432:5432"]
+#    volumes: ["pgdata:/var/lib/postgresql/data"]
+#    healthcheck:
+#      test: ["CMD-SHELL", "pg_isready -U atomquest -d atomquest"]
+#      interval: 5s
+#      timeout: 5s
+#      retries: 12
+#
+# volumes:
+#   pgdata:
+# ---------------------------------------------------------------------------

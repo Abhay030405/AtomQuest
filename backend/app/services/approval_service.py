@@ -21,6 +21,30 @@ from app.services.version_service import version_service
 
 
 class ApprovalService:
+	async def _reload_sheet_full(self, sheet_id: UUID, db: AsyncSession) -> GoalSheet:
+		"""Reload a sheet with every relationship the response builder touches.
+
+		`db.refresh()` only reloads scalar columns; the API response builder
+		walks sheet.cycle / sheet.approver / sheet.owner / goal.owner /
+		goal.locker / goal.goal_sheet, so they must be eager-loaded after
+		commit to avoid MissingGreenlet errors when Pydantic serializes.
+		"""
+		stmt = (
+			select(GoalSheet)
+			.options(
+				selectinload(GoalSheet.goals).selectinload(Goal.owner),
+				selectinload(GoalSheet.goals).selectinload(Goal.locker),
+				selectinload(GoalSheet.goals).selectinload(Goal.goal_sheet),
+				selectinload(GoalSheet.owner),
+				selectinload(GoalSheet.approver),
+				selectinload(GoalSheet.cycle),
+			)
+			.where(GoalSheet.id == sheet_id)
+		)
+		result = await db.execute(stmt)
+		sheet = result.scalar_one()
+		return sheet
+
 	async def get_pending_approvals(self, manager: User, db: AsyncSession) -> list[GoalSheet]:
 		stmt = (
 			select(GoalSheet)
@@ -60,6 +84,10 @@ class ApprovalService:
 			# when the employee added new drafts and re-submitted the sheet).
 			if goal.status == GoalStatus.LOCKED:
 				continue
+			# The state machine forbids SUBMITTED -> APPROVED directly. Walk the
+			# legal chain: SUBMITTED -> UNDER_REVIEW -> APPROVED -> LOCKED.
+			if goal.status == GoalStatus.SUBMITTED:
+				goal_state_machine.transition(goal, GoalStatus.UNDER_REVIEW, manager)
 			goal_state_machine.transition(goal, GoalStatus.APPROVED, manager)
 			goal_state_machine.transition(goal, GoalStatus.LOCKED, manager)
 			await version_service.snapshot_goal(goal, manager, "Approved and locked by manager", db)
@@ -109,8 +137,7 @@ class ApprovalService:
 		)
 
 		await db.commit()
-		await db.refresh(sheet)
-		return sheet
+		return await self._reload_sheet_full(sheet.id, db)
 
 	async def return_for_rework(self, sheet_id: UUID, manager: User, reason: str, db: AsyncSession) -> GoalSheet:
 		stmt = (
@@ -168,8 +195,7 @@ class ApprovalService:
 		)
 
 		await db.commit()
-		await db.refresh(sheet)
-		return sheet
+		return await self._reload_sheet_full(sheet.id, db)
 
 	async def inline_edit_goal(self, goal_id: UUID, manager: User, data: Any, db: AsyncSession) -> Goal:
 		stmt = (

@@ -294,6 +294,18 @@ export default function MyGoals() {
   );
   const canSendToManager = weightageOk && stagedDraftGoals.length > 0 && !submitSheetMutation.isPending;
 
+  // Sheet is considered "submitted" when at least one goal has progressed
+  // beyond draft AND there are no pending staged drafts waiting to be sent.
+  // In that state we replace the "Send to Manager" CTA with a green tick.
+  const isSheetSubmitted = useMemo(
+    () =>
+      stagedDraftGoals.length === 0 &&
+      goals.some((g) =>
+        ["submitted", "under-review", "approved", "locked"].includes(g.status),
+      ),
+    [goals, stagedDraftGoals.length],
+  );
+
   function handleDrop(targetCol: ColumnId) {
     const id = draggingId;
     setDraggingId(null);
@@ -343,31 +355,44 @@ export default function MyGoals() {
           </p>
         </div>
         <div className="flex items-center gap-sm">
-          <button
-            type="button"
-            onClick={handleSendToManager}
-            disabled={!canSendToManager}
-            title={
-              !weightageOk
-                ? `Reach 100% weightage to enable (currently ${weightageRounded}%)`
-                : stagedDraftGoals.length === 0
-                  ? "Drag drafts into Submitted Goals first"
-                  : `Send full goal sheet to ${managerName}`
-            }
-            className={[
-              "inline-flex items-center gap-sm rounded-lg py-2 px-md text-title-md border-t border-white/20 shadow-level-1 transition-all",
-              canSendToManager
-                ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                : "bg-surface-container-low text-on-surface-variant border-outline-variant cursor-not-allowed opacity-70",
-            ].join(" ")}
-          >
-            {submitSheetMutation.isPending ? (
-              <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
-            ) : (
-              <span className="material-symbols-outlined text-[18px]">send</span>
-            )}
-            Send to {managerName}
-          </button>
+          {isSheetSubmitted ? (
+            <div
+              className="inline-flex items-center gap-sm rounded-lg py-2 px-md text-title-md bg-emerald-50 text-emerald-700 border border-emerald-200"
+              role="status"
+              aria-live="polite"
+            >
+              <span className="material-symbols-outlined text-[20px] text-emerald-600">
+                check_circle
+              </span>
+              Goal sheet submitted
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleSendToManager}
+              disabled={!canSendToManager}
+              title={
+                !weightageOk
+                  ? `Reach 100% weightage to enable (currently ${weightageRounded}%)`
+                  : stagedDraftGoals.length === 0
+                    ? "Drag drafts into Submitted Goals first"
+                    : `Send full goal sheet to ${managerName}`
+              }
+              className={[
+                "inline-flex items-center gap-sm rounded-lg py-2 px-md text-title-md border-t border-white/20 shadow-level-1 transition-all",
+                canSendToManager
+                  ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                  : "bg-surface-container-low text-on-surface-variant border-outline-variant cursor-not-allowed opacity-70",
+              ].join(" ")}
+            >
+              {submitSheetMutation.isPending ? (
+                <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
+              ) : (
+                <span className="material-symbols-outlined text-[18px]">send</span>
+              )}
+              Send to {managerName}
+            </button>
+          )}
           <button
             onClick={openCreate}
             className="inline-flex items-center gap-sm bg-primary text-on-primary rounded-lg py-2 px-md text-title-md border-t border-white/20 shadow-level-1 hover:opacity-90 transition-all"

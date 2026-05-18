@@ -30,6 +30,7 @@ def _build_user_response(user) -> UserResponse:
 			"role": user.role,
 			"department_id": user.department_id,
 			"employee_code": user.employee_code,
+			"phone_number": user.phone_number,
 			"manager_id": user.manager_id,
 			"manager_name": user.manager.full_name if getattr(user, "manager", None) else None,
 			"department_name": user.department.name if getattr(user, "department", None) else None,
@@ -48,6 +49,8 @@ def _build_user_list_response(user) -> UserListResponse:
 			"full_name": user.full_name,
 			"role": user.role,
 			"employee_code": user.employee_code,
+			"phone_number": user.phone_number,
+			"department_id": user.department_id,
 			"department_name": user.department.name if getattr(user, "department", None) else None,
 			"manager_name": user.manager.full_name if getattr(user, "manager", None) else None,
 			"is_active": user.is_active,
@@ -84,6 +87,12 @@ async def create_user(
 	current_user=Depends(get_current_admin),
 ) -> APIResponse[UserResponse]:
 	repo = UserRepository(db)
+	# Managers report to the admin who created them; employees report to the
+	# manager picked in the form. Override whatever the client sent for
+	# manager_id so the org tree stays consistent.
+	resolved_manager_id = (
+		current_user.id if payload.role == UserRole.MANAGER else payload.manager_id
+	)
 	# employee_code is server-generated and globally unique. Retry on the rare
 	# race where two same-role users are created concurrently and collide on
 	# the unique constraint; re-raise any other integrity error unchanged.
@@ -98,7 +107,8 @@ async def create_user(
 					"role": payload.role,
 					"department_id": payload.department_id,
 					"employee_code": await repo.next_employee_code(payload.role),
-					"manager_id": payload.manager_id,
+					"manager_id": resolved_manager_id,
+					"phone_number": payload.phone_number,
 					"is_active": True,
 				}
 			)
@@ -112,7 +122,10 @@ async def create_user(
 
 	await audit_service.log_create("users", user.id, current_user, db)
 	await db.commit()
-	await db.refresh(user)
+	# Re-fetch with eager-loaded manager + department; the freshly created
+	# instance has unloaded relationships which would trigger an async lazy
+	# load inside the response builder (MissingGreenlet).
+	user = await repo.get_or_raise(user.id)
 	return APIResponse.ok(_build_user_response(user))
 
 
