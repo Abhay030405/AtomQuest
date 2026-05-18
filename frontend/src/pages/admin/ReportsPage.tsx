@@ -68,7 +68,7 @@ export default function ReportsPage() {
     { label: "Draft",     count: allGoals.filter((g) => g.status === GoalStatus.DRAFT).length,     cls: "bg-surface-variant" },
     { label: "Submitted", count: allGoals.filter((g) => g.status === GoalStatus.SUBMITTED).length, cls: "bg-secondary" },
     { label: "Approved",  count: allGoals.filter((g) => g.status === GoalStatus.APPROVED || g.status === GoalStatus.LOCKED).length, cls: "bg-tertiary" },
-    { label: "Rework",    count: allGoals.filter((g) => g.status === GoalStatus.REWORK).length,    cls: "bg-error" },
+    { label: "Under Review", count: allGoals.filter((g) => g.status === GoalStatus.UNDER_REVIEW).length, cls: "bg-error" },
   ];
   const maxGoalCount = Math.max(...goalStatusBars.map((b) => b.count), 1);
 

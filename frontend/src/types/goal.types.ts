@@ -52,7 +52,8 @@ export type GoalEventType = (typeof GoalEventType)[keyof typeof GoalEventType];
 export type GoalSheetStatus =
   | typeof GoalStatus.DRAFT
   | typeof GoalStatus.SUBMITTED
-  | typeof GoalStatus.APPROVED;
+  | typeof GoalStatus.APPROVED
+  | typeof GoalStatus.LOCKED;
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 

@@ -21,4 +21,5 @@ export interface AuditLog {
   actorName: string;
   actorRole: UserRole;
   changedAt: string;
+  ipAddress?: string;
 }
