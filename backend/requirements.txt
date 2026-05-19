@@ -13,3 +13,4 @@ structlog
 python-dotenv
 httpx
 aiofiles
+apscheduler>=3.10.0

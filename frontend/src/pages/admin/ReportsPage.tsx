@@ -1,8 +1,11 @@
 import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAllGoals } from "@/hooks/useGoals";
 import { useAdminAllSheets } from "@/hooks/useAdmin";
 import { useAllUsers } from "@/hooks/useApprovals";
 import { useCycleStore } from "@/store/cycleStore";
+import { adminService } from "@/services/admin.service";
+import { CyclePhase } from "@/types/cycle.types";
 import { GoalStatus } from "@/types/goal.types";
 import { UserRole } from "@/types/user.types";
 import { formatDate } from "@/utils/date.util";
@@ -18,7 +21,28 @@ const SHEET_STATUS_CHIP: Record<string, { cls: string; label: string }> = {
 };
 
 export default function ReportsPage() {
-  const cycleId = useCycleStore((s) => s.activeWindow?.id ?? "");
+  const activeWindow = useCycleStore((s) => s.activeWindow);
+
+  // Fetch all cycle configs, filter to GOAL_SETTING phases as fiscal years
+  const { data: allCycles = [] } = useQuery({
+    queryKey: ["admin-cycles-for-reports"],
+    queryFn: () => adminService.getCycleConfigs(),
+  });
+
+  const fyOptions = useMemo(
+    () =>
+      allCycles
+        .filter((c) => c.phase === CyclePhase.GOAL_SETTING)
+        .sort((a, b) => b.cycleName.localeCompare(a.cycleName)),
+    [allCycles]
+  );
+
+  const defaultFY = activeWindow?.cycleName ?? fyOptions[0]?.cycleName ?? "";
+  const [selectedFY, setSelectedFY] = useState<string>("");
+  const effectiveFY = selectedFY || defaultFY;
+  const selectedCycle = fyOptions.find((c) => c.cycleName === effectiveFY);
+  const cycleId = selectedCycle?.id ?? "";
+
   const { data: allGoals = [], isLoading: goalsLoading } = useAllGoals(cycleId);
   const { data: allSheetsRes, isLoading: sheetsLoading } = useAdminAllSheets(cycleId);
   const { data: allUsers = [], isLoading: usersLoading } = useAllUsers();
@@ -81,14 +105,23 @@ export default function ReportsPage() {
           <p className="text-body-md text-on-surface-variant mt-xs">Comprehensive view of performance and compliance.</p>
         </div>
         <div className="flex items-center gap-sm">
-          <button className="flex items-center gap-sm px-md py-sm bg-surface-container-low text-on-surface border border-outline-variant rounded-lg text-label-md hover:bg-surface-container-high transition-colors shadow-level-1">
-            <span className="material-symbols-outlined text-[18px]">calendar_today</span>
-            FY 2026
-          </button>
-          <button className="flex items-center gap-sm px-md py-sm bg-primary text-on-primary rounded-lg text-label-md hover:opacity-90 transition-opacity shadow-level-1 border-t border-white/20">
-            <span className="material-symbols-outlined text-[18px]">download</span>
-            Export
-          </button>
+          {fyOptions.length > 0 && (
+            <div className="flex items-center gap-sm">
+              <span className="text-label-md text-on-surface-variant">Fiscal Year</span>
+              <select
+                value={effectiveFY}
+                onChange={(e) => setSelectedFY(e.target.value)}
+                className="rounded-lg border border-outline-variant bg-surface-container-low px-md py-sm text-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/40"
+              >
+                {fyOptions.map((c) => (
+                  <option key={c.id} value={c.cycleName}>
+                    {c.cycleName}
+                    {c.cycleName === activeWindow?.cycleName ? " (Active)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       </div>
 
@@ -180,7 +213,7 @@ export default function ReportsPage() {
         <div className="p-lg border-b border-outline-variant bg-surface-bright flex flex-col sm:flex-row sm:items-center justify-between gap-md">
           <div>
             <h3 className="text-title-lg text-on-surface">Employee Goal Status</h3>
-            <p className="text-label-md text-on-surface-variant">Submission and approval tracker for FY 2026</p>
+            <p className="text-label-md text-on-surface-variant">Submission and approval tracker for {effectiveFY || "current cycle"}</p>
           </div>
           <div className="flex items-center gap-sm">
             <div className="relative">

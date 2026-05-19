@@ -36,6 +36,9 @@ class Settings(BaseSettings):
 		validation_alias="AZURE_REDIRECT_URI",
 	)
 	frontend_url: str = Field(default="http://localhost:5173", validation_alias="FRONTEND_URL")
+	# Role assigned to new users auto-provisioned via SSO. "admin" is the default for hackathon
+	# demos; set to "employee" in production.
+	azure_sso_default_role: str = Field(default="admin", validation_alias="AZURE_SSO_DEFAULT_ROLE")
 
 	model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

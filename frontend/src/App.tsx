@@ -33,6 +33,8 @@ const SharedGoalsPage = lazy(() => import("@/pages/admin/SharedGoalsPage"));
 const AuditTrailPage = lazy(() => import("@/pages/admin/AuditTrailPage"));
 const ReportsPage = lazy(() => import("@/pages/admin/ReportsPage"));
 const GoalUnlockPage = lazy(() => import("@/pages/admin/GoalUnlockPage"));
+const EscalationPage = lazy(() => import("@/pages/admin/EscalationPage"));
+const AnalyticsPage = lazy(() => import("@/pages/admin/AnalyticsPage"));
 
 // ─── Page loading fallback ────────────────────────────────────────────────────
 
@@ -136,6 +138,8 @@ export default function App() {
               <Route path={ROUTE_PATTERNS.ADMIN.AUDIT} element={<AuditTrailPage />} />
               <Route path={ROUTE_PATTERNS.ADMIN.REPORTS} element={<ReportsPage />} />
               <Route path={ROUTE_PATTERNS.ADMIN.GOAL_UNLOCK} element={<GoalUnlockPage />} />
+              <Route path={ROUTE_PATTERNS.ADMIN.ESCALATION} element={<EscalationPage />} />
+              <Route path={ROUTE_PATTERNS.ADMIN.ANALYTICS} element={<AnalyticsPage />} />
             </Route>
           </Route>
 

@@ -53,6 +53,18 @@ class UserRepository(BaseRepository[User]):
 		result = await self.session.execute(stmt)
 		return result.scalar_one_or_none()
 
+	async def get_by_microsoft_email(self, microsoft_email: str) -> Optional[User]:
+		"""Look up an active user by their linked Microsoft/Azure account email."""
+		stmt = (
+			select(User)
+			.options(*_USER_OPTS)
+			.where(func.lower(User.microsoft_email) == microsoft_email.lower())
+			.where(User.is_deleted.is_(False))
+			.where(User.is_active.is_(True))
+		)
+		result = await self.session.execute(stmt)
+		return result.scalar_one_or_none()
+
 	async def get(self, id: UUID) -> Optional[User]:
 		stmt = (
 			select(User)

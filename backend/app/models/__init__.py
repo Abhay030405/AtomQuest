@@ -7,6 +7,7 @@ from app.models.checkin import Checkin
 from app.models.checkin_event import CheckinEvent
 from app.models.cycle_config import CycleConfig
 from app.models.department import Department
+from app.models.escalation import EscalationLog, EscalationRule
 from app.models.goal import Goal
 from app.models.goal_event import GoalEvent
 from app.models.goal_sheet import GoalSheet
@@ -26,6 +27,8 @@ __all__ = [
     "CheckinEvent",
     "CycleConfig",
     "Department",
+    "EscalationLog",
+    "EscalationRule",
     "Goal",
     "GoalEvent",
     "GoalSheet",

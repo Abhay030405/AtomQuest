@@ -17,6 +17,7 @@ from app.api.deps import (
 from app.core.constants import GoalSheetStatus, Permission, Quarter
 from app.core.exceptions import CycleNotFoundError
 from app.repositories.analytics_snapshot_repository import AnalyticsSnapshotRepository
+from app.repositories.goal_repository import GoalRepository
 from app.schemas.common import APIResponse
 from app.schemas.report import GoalReportRow, OrgStatsResponse
 from app.services.checkin_completion_tracker import checkin_completion_tracker
@@ -228,3 +229,44 @@ async def get_overdue_users(
 			for u in users
 		]
 	)
+
+
+@router.get("/qoq-trend", response_model=APIResponse[list[dict]])
+async def get_qoq_trend(
+	scope: str = Query(default="org", pattern="^(org|department|manager|user)$"),
+	scope_id: Optional[UUID] = Query(default=None),
+	cycle_id: Optional[UUID] = Query(default=None),
+	db: AsyncSession = Depends(get_db),
+	_: object = Depends(require_permission(Permission.VIEW_ANALYTICS)),
+) -> APIResponse[list[dict]]:
+	"""Quarter-on-Quarter score trend for org / department / manager / user."""
+	resolved = await _resolve_cycle_id(cycle_id, db)
+	repo = AnalyticsSnapshotRepository(db)
+	rows = await repo.get_qoq_trend(resolved, scope=scope, scope_id=scope_id)
+	return APIResponse.ok(rows)
+
+
+@router.get("/goal-distribution", response_model=APIResponse[dict])
+async def get_goal_distribution(
+	cycle_id: Optional[UUID] = Query(default=None),
+	db: AsyncSession = Depends(get_db),
+	_: object = Depends(require_permission(Permission.VIEW_ANALYTICS)),
+) -> APIResponse[dict]:
+	"""Goal counts grouped by thrust_area, uom_type, and status."""
+	resolved = await _resolve_cycle_id(cycle_id, db)
+	repo = GoalRepository(db)
+	dist = await repo.get_goal_distribution(resolved)
+	return APIResponse.ok(dist)
+
+
+@router.get("/manager-effectiveness", response_model=APIResponse[list[dict]])
+async def get_manager_effectiveness(
+	cycle_id: Optional[UUID] = Query(default=None),
+	db: AsyncSession = Depends(get_db),
+	_: object = Depends(require_permission(Permission.VIEW_ANALYTICS)),
+) -> APIResponse[list[dict]]:
+	"""Per-manager: headcount, approval turnaround, team score, checkin rate."""
+	resolved = await _resolve_cycle_id(cycle_id, db)
+	repo = AnalyticsSnapshotRepository(db)
+	rows = await repo.get_manager_effectiveness(resolved)
+	return APIResponse.ok(rows)

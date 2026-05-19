@@ -3,15 +3,14 @@ from __future__ import annotations
 import secrets
 from urllib.parse import urlencode
 from uuid import UUID
-
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import RedirectResponse
 import httpx
 
 from app.core.config import settings
-from app.core.constants import RBAC_MATRIX
+from app.core.constants import RBAC_MATRIX, UserRole
 from app.core.exceptions import AtomQuestException, InvalidCredentialsError, UnauthorizedError
-from app.core.security import create_access_token, create_refresh_token, decode_token, verify_password
+from app.core.security import create_access_token, create_refresh_token, decode_token, hash_password, verify_password
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import LoginRequest, LogoutRequest, RefreshRequest, TokenResponse
 from app.schemas.common import APIResponse
@@ -179,15 +178,47 @@ async def azure_callback(
 	ms_user = graph_resp.json()
 	# Microsoft returns "mail" for regular accounts and "userPrincipalName" as fallback
 	email: str = ms_user.get("mail") or ms_user.get("userPrincipalName") or ""
+	# DEBUG — remove after confirming the correct email mapping
+	print(f"[AZURE_DEBUG] mail={ms_user.get('mail')!r}  upn={ms_user.get('userPrincipalName')!r}  resolved={email!r}", flush=True)
 	if not email:
 		return RedirectResponse(url=f"{frontend_cb}?error=email_not_found")
 
-	# Find the user in our database (must already exist — Admins pre-create accounts)
+	# Look up user: microsoft_email mapping first → email match → auto-provision
 	repo = UserRepository(db)
-	user = await repo.get_by_email(email)
+	user = await repo.get_by_microsoft_email(email)
+
 	if user is None:
-		return RedirectResponse(url=f"{frontend_cb}?error=user_not_found")
-	if not user.is_active:
+		# Fallback: match by the email itself (for users whose DB email == Microsoft email)
+		user = await repo.get_by_email(email)
+
+	if user is None:
+		# Auto-provision: create the user from their Microsoft profile.
+		# Default role is ADMIN for demo/hackathon convenience; set AZURE_SSO_DEFAULT_ROLE
+		# env var to "employee" or "manager" to override in production.
+		default_role_str = settings.azure_sso_default_role.lower()
+		role_map = {r.value: r for r in UserRole}
+		sso_role = role_map.get(default_role_str, UserRole.ADMIN)
+
+		full_name: str = ms_user.get("displayName") or ms_user.get("givenName") or email.split("@")[0]
+		employee_code = await repo.next_employee_code(sso_role)
+
+		# Generate a random password hash — this account can only be accessed via SSO
+		dummy_password = hash_password(secrets.token_urlsafe(32))
+
+		user = await repo.create({
+			"email": email,
+			"full_name": full_name,
+			"role": sso_role,
+			"hashed_password": dummy_password,
+			"employee_code": employee_code,
+			"microsoft_email": email,
+			"is_active": True,
+		})
+		await db.commit()
+		# Re-fetch with relationships loaded
+		user = await repo.get_by_microsoft_email(email)
+
+	if user is None or not user.is_active:
 		return RedirectResponse(url=f"{frontend_cb}?error=account_deactivated")
 
 	# Issue our application JWTs

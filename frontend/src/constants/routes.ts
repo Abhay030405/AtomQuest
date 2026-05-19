@@ -36,6 +36,8 @@ export const ROUTES = {
     AUDIT: (userId: string) => `/admin/${userId}/audit`,
     REPORTS: (userId: string) => `/admin/${userId}/reports`,
     SETTINGS: (userId: string) => `/admin/${userId}/settings`,
+    ESCALATION: (userId: string) => `/admin/${userId}/escalation`,
+    ANALYTICS: (userId: string) => `/admin/${userId}/analytics`,
   },
 } as const;
 
@@ -72,6 +74,8 @@ export const ROUTE_PATTERNS = {
     AUDIT: "/admin/:userId/audit",
     REPORTS: "/admin/:userId/reports",
     SETTINGS: "/admin/:userId/settings",
+    ESCALATION: "/admin/:userId/escalation",
+    ANALYTICS: "/admin/:userId/analytics",
   },
 } as const;
 
@@ -94,4 +98,5 @@ export const PAGE_TITLES: Record<string, string> = {
   "/admin/audit": "Audit Trail",
   "/admin/reports": "Reports",
   "/admin/users": "User Management",
+  "/admin/escalation": "Escalation Module",
 };

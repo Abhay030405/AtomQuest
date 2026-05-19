@@ -26,6 +26,7 @@ from app.models.goal_sheet import GoalSheet
 from app.models.user import User
 from app.repositories.goal_repository import GoalRepository
 from app.services.cycle_service import cycle_service
+from app.services.escalation_engine import TRIGGER_GOALS_NOT_SUBMITTED, escalation_engine
 from app.services.goal_state_machine import goal_state_machine
 from app.services.version_service import version_service
 
@@ -227,6 +228,10 @@ class GoalService:
 				"old_status": old_status,
 			},
 			db,
+		)
+		# Resolve any open "goals not submitted" escalation entries for this user
+		await escalation_engine.resolve_for_user(
+			TRIGGER_GOALS_NOT_SUBMITTED, user.id, db
 		)
 		await db.commit()
 		# Re-fetch with all relationships eager-loaded; otherwise the response

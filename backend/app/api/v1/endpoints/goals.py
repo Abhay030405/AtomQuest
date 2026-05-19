@@ -145,8 +145,10 @@ async def get_team_sheets(
 		.join(User, GoalSheet.user_id == User.id)
 		.where(GoalSheet.cycle_id == cycle_id)
 		.where(GoalSheet.is_deleted.is_(False))
-		.where(User.manager_id == current_user.id)
 	)
+	# Admins see all sheets; managers only see their direct reports
+	if current_user.role != UserRole.ADMIN:
+		stmt = stmt.where(User.manager_id == current_user.id)
 	if status:
 		stmt = stmt.where(GoalSheet.status == status)
 

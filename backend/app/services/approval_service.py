@@ -16,6 +16,7 @@ from app.events.event_bus import event_bus
 from app.models.goal import Goal
 from app.models.goal_sheet import GoalSheet
 from app.models.user import User
+from app.services.escalation_engine import TRIGGER_MANAGER_APPROVAL_OVERDUE, escalation_engine
 from app.services.goal_state_machine import goal_state_machine
 from app.services.version_service import version_service
 
@@ -134,6 +135,10 @@ class ApprovalService:
 				"actor_role": manager.role,
 			},
 			db,
+		)
+		# Resolve any open "manager approval overdue" escalation entries for this manager
+		await escalation_engine.resolve_for_user(
+			TRIGGER_MANAGER_APPROVAL_OVERDUE, manager.id, db
 		)
 
 		await db.commit()

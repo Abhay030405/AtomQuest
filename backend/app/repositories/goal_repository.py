@@ -107,3 +107,28 @@ class GoalRepository(BaseRepository[Goal]):
 		)
 		result = await self.session.execute(stmt)
 		return list(result.scalars().all())
+
+	async def get_goal_distribution(self, cycle_id: UUID) -> dict[str, list[dict]]:
+		"""Count goals grouped by thrust_area, uom_type, and status for the given cycle."""
+		async def _count_by(col: object) -> list[dict]:
+			stmt = (
+				select(col, func.count(Goal.id).label("count"))
+				.where(Goal.cycle_id == cycle_id)
+				.where(Goal.is_deleted.is_(False))
+				.group_by(col)
+				.order_by(func.count(Goal.id).desc())
+			)
+			result = await self.session.execute(stmt)
+			return [
+				{
+					"label": (row[0].value if hasattr(row[0], "value") else str(row[0])),
+					"count": int(row[1]),
+				}
+				for row in result.all()
+			]
+
+		return {
+			"by_thrust_area": await _count_by(Goal.thrust_area),
+			"by_uom_type": await _count_by(Goal.uom_type),
+			"by_status": await _count_by(Goal.status),
+		}

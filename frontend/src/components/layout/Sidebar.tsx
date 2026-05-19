@@ -34,8 +34,10 @@ const NAV_SECTIONS: NavSection[] = [
       { label: "View Personnel", to: ROUTES.ADMIN.PERSONNEL(userId), icon: "groups" },
       { label: "Cycle Config", to: ROUTES.ADMIN.CYCLES(userId), icon: "track_changes" },
       { label: "Shared Goals", to: ROUTES.ADMIN.SHARED_GOALS(userId), icon: "domain" },
+      { label: "Escalation", to: ROUTES.ADMIN.ESCALATION(userId), icon: "notification_important" },
       { label: "Audit Trail", to: ROUTES.ADMIN.AUDIT(userId), icon: "history" },
       { label: "Reports", to: ROUTES.ADMIN.REPORTS(userId), icon: "analytics" },
+      { label: "Analytics", to: ROUTES.ADMIN.ANALYTICS(userId), icon: "insights" },
     ],
   },
   {

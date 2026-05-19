@@ -11,6 +11,7 @@ from app.core.exceptions import atomquest_exception_handler, validation_exceptio
 from app.core.logging import configure_logging
 from app.events import setup_handlers
 from app.middleware import LoggingMiddleware, RequestIdMiddleware
+from app.services.escalation_scheduler import start_scheduler, stop_scheduler
 from app.services.rbac_service import rbac_service
 
 
@@ -47,6 +48,11 @@ def create_app() -> FastAPI:
 		setup_handlers()
 		async with AsyncSessionLocal() as db:
 			await rbac_service.verify_db_consistency(db)
+		start_scheduler(interval_minutes=60)
+
+	@app.on_event("shutdown")
+	async def on_shutdown() -> None:
+		stop_scheduler()
 
 	@app.get("/health")
 	async def health() -> dict[str, str]:
